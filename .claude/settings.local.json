@@ -1,0 +1,39 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:api.github.com)",
+      "WebSearch",
+      "WebFetch(domain:godotshaders.com)",
+      "WebFetch(domain:binbun3d.itch.io)",
+      "Bash(Get-ChildItem -Path \"D:\\\\Godot\\\\새-게임-프로젝트\\\\addons\" -Directory -ErrorAction SilentlyContinue)",
+      "Bash(Select-Object FullName)",
+      "Bash(gh api *)",
+      "Bash(Get-ChildItem *)",
+      "Bash(Remove-Item \"D:\\\\Godot\\\\새-게임-프로젝트\\\\data\\\\cards\\\\*.tres\" -Force)",
+      "Bash(Remove-Item \"D:\\\\Godot\\\\새-게임-프로젝트\\\\data\\\\equipment\\\\*.tres\" -Force)",
+      "Bash(Remove-Item \"D:\\\\Godot\\\\새-게임-프로젝트\\\\data\\\\scrolls\\\\*.tres\" -Force)",
+      "Skill(deep-research)",
+      "Workflow(deep-research)",
+      "WebFetch(domain:aloa.co)",
+      "WebFetch(domain:ludo.ai)",
+      "WebFetch(domain:www.spritesheets.ai)",
+      "WebFetch(domain:apatero.com)",
+      "WebFetch(domain:medium.com)",
+      "WebFetch(domain:ziva.sh)",
+      "WebFetch(domain:free-game-assets.itch.io)",
+      "WebFetch(domain:opengameart.org)",
+      "WebFetch(domain:itch.io)",
+      "WebFetch(domain:www.hackingtons.com)",
+      "WebFetch(domain:www.artstation.com)",
+      "WebFetch(domain:characterdesignreferences.com)",
+      "WebFetch(domain:penusbmic.itch.io)",
+      "WebFetch(domain:craftpix.net)",
+      "WebFetch(domain:gameliberty.gumroad.com)",
+      "WebFetch(domain:artstation.com)",
+      "WebFetch(domain:noiracide.itch.io)",
+      "WebFetch(domain:japassou.itch.io)"
+    ]
+  }
+}

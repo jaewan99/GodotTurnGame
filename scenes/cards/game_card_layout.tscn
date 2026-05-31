@@ -1,0 +1,61 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/cards/game_card_layout.gd" id="1_layout"]
+
+[node name="GameCardLayout" type="SubViewportContainer"]
+script = ExtResource("1_layout")
+stretch = true
+
+[node name="SubViewport" type="SubViewport" parent="."]
+transparent_bg = true
+handle_input_locally = false
+size = Vector2i(150, 210)
+render_target_update_mode = 4
+
+[node name="Background" type="Panel" parent="SubViewport"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="Art" type="TextureRect" parent="SubViewport"]
+offset_left = 12.0
+offset_top = 34.0
+offset_right = 138.0
+offset_bottom = 138.0
+expand_mode = 1
+stretch_mode = 6
+
+[node name="NameLabel" type="Label" parent="SubViewport"]
+offset_left = 10.0
+offset_top = 6.0
+offset_right = 140.0
+offset_bottom = 30.0
+text = "Card Name"
+horizontal_alignment = 1
+
+[node name="CostLabel" type="Label" parent="SubViewport"]
+offset_left = 6.0
+offset_top = 4.0
+offset_right = 34.0
+offset_bottom = 32.0
+text = "1"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="DescriptionLabel" type="Label" parent="SubViewport"]
+offset_left = 12.0
+offset_top = 144.0
+offset_right = 138.0
+offset_bottom = 204.0
+horizontal_alignment = 1
+autowrap_mode = 2
+
+[node name="Shine" type="ColorRect" parent="SubViewport"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(1, 1, 1, 1)

@@ -1,0 +1,33 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/ui/combatant_hud.gd" id="1_hud"]
+
+[node name="CombatantHUD" type="Control"]
+custom_minimum_size = Vector2(440, 76)
+offset_right = 440.0
+offset_bottom = 76.0
+script = ExtResource("1_hud")
+
+[node name="NameLabel" type="Label" parent="."]
+layout_mode = 0
+offset_left = 10.0
+offset_top = 4.0
+offset_right = 430.0
+offset_bottom = 30.0
+text = "Name"
+
+[node name="HPLabel" type="Label" parent="."]
+layout_mode = 0
+offset_left = 10.0
+offset_top = 4.0
+offset_right = 430.0
+offset_bottom = 30.0
+text = "30 / 30"
+
+[node name="EnergyLabel" type="Label" parent="."]
+layout_mode = 0
+offset_left = 10.0
+offset_top = 53.0
+offset_right = 430.0
+offset_bottom = 73.0
+text = "5 / 10"

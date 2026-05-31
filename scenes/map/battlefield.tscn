@@ -1,0 +1,249 @@
+[gd_scene format=3 uid="uid://xlvmfgtyvnhc"]
+
+[ext_resource type="Script" uid="uid://n6l74km2jdkd" path="res://scripts/map/board.gd" id="1_board"]
+[ext_resource type="Script" uid="uid://cjjui3j8wmfm2" path="res://scripts/map/battlefield.gd" id="2_field"]
+[ext_resource type="PackedScene" path="res://scenes/map/token.tscn" id="3_token"]
+[ext_resource type="PackedScene" path="res://scenes/battle/hand.tscn" id="4_hand"]
+[ext_resource type="PackedScene" path="res://scenes/ui/combatant_hud.tscn" id="5_hud"]
+[ext_resource type="PackedScene" path="res://scenes/battle/plan_slot.tscn" id="6_slot"]
+[ext_resource type="PackedScene" path="res://scenes/battle/move_pool.tscn" id="7_pool"]
+[ext_resource type="PackedScene" path="res://scenes/ui/card_viewer.tscn" id="8_viewer"]
+
+[node name="Battlefield" type="Node2D" unique_id=521275716]
+script = ExtResource("2_field")
+
+[node name="Background" type="ColorRect" parent="." unique_id=760895849]
+offset_right = 1920.0
+offset_bottom = 1080.0
+color = Color(0.184314, 0.227451, 0.164706, 1)
+
+[node name="Board" type="Node2D" parent="." unique_id=1152033095]
+position = Vector2(960, 540)
+script = ExtResource("1_board")
+columns = 5
+
+[node name="PlayerToken" parent="Board" unique_id=90672654 instance=ExtResource("3_token")]
+position = Vector2(-280, 0)
+display_name = "Inuyasha"
+
+[node name="EnemyToken" parent="Board" unique_id=1085069902 instance=ExtResource("3_token")]
+position = Vector2(280, 0)
+display_name = "Enemy"
+team = 1
+start_cell = Vector2i(4, 1)
+
+[node name="UI" type="CanvasLayer" parent="." unique_id=1899533083]
+
+[node name="Hand" parent="UI" unique_id=764282949 instance=ExtResource("4_hand")]
+layout_mode = 3
+
+[node name="PlayerHUD" parent="UI" unique_id=1753284725 instance=ExtResource("5_hud")]
+layout_mode = 3
+anchors_preset = 0
+offset_left = 20.0
+offset_top = 16.0
+offset_right = 460.0
+offset_bottom = 92.0
+
+[node name="EnemyHUD" parent="UI" unique_id=283232754 instance=ExtResource("5_hud")]
+layout_mode = 3
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -460.0
+offset_top = 16.0
+offset_right = -20.0
+offset_bottom = 92.0
+grow_horizontal = 0
+mirrored = true
+
+[node name="LockInButton" type="Button" parent="UI" unique_id=1518421853]
+anchors_preset = 7
+anchor_left = 0.5
+anchor_top = 1.0
+anchor_right = 0.5
+anchor_bottom = 1.0
+offset_left = -92.0
+offset_top = -917.0
+offset_right = 98.0
+offset_bottom = -877.0
+grow_horizontal = 2
+grow_vertical = 0
+text = "Lock In (0/3)"
+
+[node name="DiscardPile" type="Panel" parent="UI" unique_id=610416569]
+anchors_preset = 2
+anchor_top = 1.0
+anchor_bottom = 1.0
+offset_left = 20.0
+offset_top = -150.0
+offset_right = 130.0
+offset_bottom = -20.0
+grow_vertical = 0
+
+[node name="Label" type="Label" parent="UI/DiscardPile" unique_id=802851611]
+layout_mode = 0
+anchor_right = 1.0
+anchor_bottom = 1.0
+text = "Discard
+0"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="DeckPile" type="Panel" parent="UI" unique_id=1703392604]
+anchors_preset = 3
+anchor_left = 1.0
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -130.0
+offset_top = -150.0
+offset_right = -20.0
+offset_bottom = -20.0
+grow_horizontal = 0
+grow_vertical = 0
+
+[node name="Label" type="Label" parent="UI/DeckPile" unique_id=618024391]
+layout_mode = 0
+anchor_right = 1.0
+anchor_bottom = 1.0
+text = "Deck
+0"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="PlanBar" type="HBoxContainer" parent="UI" unique_id=1778273698]
+custom_minimum_size = Vector2(0, -2.77)
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -250.0
+offset_top = -110.0
+offset_right = 250.0
+offset_bottom = 110.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/separation = 16
+alignment = 1
+
+[node name="Slot0" parent="UI/PlanBar" unique_id=1737284431 instance=ExtResource("6_slot")]
+layout_mode = 2
+
+[node name="Slot1" parent="UI/PlanBar" unique_id=1283700340 instance=ExtResource("6_slot")]
+layout_mode = 2
+index = 1
+
+[node name="Slot2" parent="UI/PlanBar" unique_id=1527355139 instance=ExtResource("6_slot")]
+layout_mode = 2
+index = 2
+
+[node name="MovePool" parent="UI" unique_id=1500752034 instance=ExtResource("7_pool")]
+anchors_preset = 11
+anchor_left = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -190.0
+offset_top = 104.0
+offset_right = -10.0
+offset_bottom = -150.0
+grow_horizontal = 0
+
+[node name="HideButton" type="Button" parent="UI" unique_id=1841942561]
+anchors_preset = 7
+anchor_left = 0.5
+anchor_top = 1.0
+anchor_right = 0.5
+anchor_bottom = 1.0
+offset_left = -45.0
+offset_top = -811.0
+offset_right = 45.0
+offset_bottom = -780.0
+grow_horizontal = 2
+grow_vertical = 0
+text = "Hide"
+
+[node name="Banner" type="Label" parent="UI" unique_id=276157750]
+visible = false
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -200.0
+offset_top = -40.0
+offset_right = 200.0
+offset_bottom = 40.0
+grow_horizontal = 2
+grow_vertical = 2
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="Toast" type="Label" parent="UI" unique_id=2043784110]
+visible = false
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -200.0
+offset_top = -150.0
+offset_right = 200.0
+offset_bottom = -118.0
+grow_horizontal = 2
+grow_vertical = 2
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="PauseButton" type="Button" parent="UI" unique_id=785629017]
+process_mode = 3
+offset_left = 790.0
+offset_top = 26.0
+offset_right = 868.0
+offset_bottom = 62.0
+text = "Pause"
+
+[node name="RoundLabel" type="Label" parent="UI" unique_id=1581189919]
+offset_left = 872.0
+offset_top = 28.0
+offset_right = 1048.0
+offset_bottom = 62.0
+text = "Round 1"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="BagButton" type="Button" parent="UI" unique_id=1923804351]
+offset_left = 1052.0
+offset_top = 26.0
+offset_right = 1130.0
+offset_bottom = 62.0
+text = "Bag"
+
+[node name="CardViewer" parent="UI" unique_id=112233445 instance=ExtResource("8_viewer")]
+layout_mode = 3
+
+[node name="PauseOverlay" type="ColorRect" parent="UI" unique_id=620661136]
+process_mode = 3
+visible = false
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_top = 100.0
+color = Color(0, 0, 0, 0.55)
+
+[node name="PausedLabel" type="Label" parent="UI/PauseOverlay" unique_id=2068359219]
+layout_mode = 0
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -150.0
+offset_top = -24.0
+offset_right = 150.0
+offset_bottom = 24.0
+grow_horizontal = 2
+grow_vertical = 2
+text = "PAUSED"
+horizontal_alignment = 1
+vertical_alignment = 1

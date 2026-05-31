@@ -1,0 +1,42 @@
+[
+  {
+	"id": "iron_sword",
+	"equipment_name": "Iron Sword",
+	"description": "A sturdy blade. All attacks deal more damage.",
+	"slot": 0,
+	"rarity": 0,
+	"damage_bonus": 3
+  },
+  {
+	"id": "wooden_shield",
+	"equipment_name": "Wooden Shield",
+	"description": "A battered but reliable shield. Absorbs hits each round.",
+	"slot": 1,
+	"rarity": 0,
+	"block_per_turn": 2
+  },
+  {
+	"id": "leather_chest",
+	"equipment_name": "Leather Chest",
+	"description": "Worn but thick hide. Increases maximum health.",
+	"slot": 2,
+	"rarity": 0,
+	"max_hp_bonus": 10
+  },
+  {
+	"id": "iron_helm",
+	"equipment_name": "Iron Helm",
+	"description": "Clear-headed protection. Raises maximum energy.",
+	"slot": 3,
+	"rarity": 0,
+	"max_energy_bonus": 1
+  },
+  {
+	"id": "swift_boots",
+	"equipment_name": "Swift Boots",
+	"description": "Light and fast. Attacks have a chance to deal double damage.",
+	"slot": 4,
+	"rarity": 0,
+	"crit_chance": 15
+  }
+]

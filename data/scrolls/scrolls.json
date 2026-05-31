@@ -1,0 +1,47 @@
+[
+  {
+    "id": "attack_scroll",
+    "scroll_name": "Attack Scroll",
+    "description": "Enchants a piece of equipment with raw striking power.",
+    "stat_type": 0,
+    "boost_amount": 2,
+    "success_chance": 70,
+    "destroy_chance": 20
+  },
+  {
+    "id": "defense_scroll",
+    "scroll_name": "Defense Scroll",
+    "description": "Weaves a protective ward into a piece of equipment.",
+    "stat_type": 1,
+    "boost_amount": 1,
+    "success_chance": 75,
+    "destroy_chance": 15
+  },
+  {
+    "id": "vitality_scroll",
+    "scroll_name": "Vitality Scroll",
+    "description": "Infuses a piece of equipment with life energy.",
+    "stat_type": 2,
+    "boost_amount": 5,
+    "success_chance": 80,
+    "destroy_chance": 10
+  },
+  {
+    "id": "energy_scroll",
+    "scroll_name": "Energy Scroll",
+    "description": "Channels spiritual energy into a piece of equipment.",
+    "stat_type": 3,
+    "boost_amount": 1,
+    "success_chance": 60,
+    "destroy_chance": 30
+  },
+  {
+    "id": "fortune_scroll",
+    "scroll_name": "Fortune Scroll",
+    "description": "Blesses equipment with a sliver of luck.",
+    "stat_type": 4,
+    "boost_amount": 10,
+    "success_chance": 65,
+    "destroy_chance": 25
+  }
+]

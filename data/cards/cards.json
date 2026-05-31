@@ -1,0 +1,72 @@
+[
+  {
+    "id": "slash",
+    "card_name": "Slash",
+    "description": "Attack the cell in front. Deal 6.",
+    "cost": 3,
+    "type": 0,
+    "damage": 6,
+    "reward": true,
+    "starter": 4
+  },
+  {
+    "id": "heavy_slash",
+    "card_name": "Heavy Slash",
+    "description": "Attack the cell in front. Deal 10.",
+    "cost": 5,
+    "type": 0,
+    "damage": 10,
+    "reward": true,
+    "starter": 2
+  },
+  {
+    "id": "focus",
+    "card_name": "Focus",
+    "description": "Gain 4 energy.",
+    "cost": 0,
+    "type": 1,
+    "energy_gain": 4,
+    "reward": true,
+    "starter": 2
+  },
+  {
+    "id": "do_nothing",
+    "card_name": "Wait",
+    "description": "Do nothing this slot.",
+    "cost": 0,
+    "type": 3,
+    "move_direction": [0, 0]
+  },
+  {
+    "id": "move_up",
+    "card_name": "Up",
+    "description": "Move your token up one cell.",
+    "cost": 1,
+    "type": 3,
+    "move_direction": [0, -1]
+  },
+  {
+    "id": "move_down",
+    "card_name": "Down",
+    "description": "Move your token down one cell.",
+    "cost": 1,
+    "type": 3,
+    "move_direction": [0, 1]
+  },
+  {
+    "id": "move_left",
+    "card_name": "Left",
+    "description": "Move your token left one cell.",
+    "cost": 1,
+    "type": 3,
+    "move_direction": [-1, 0]
+  },
+  {
+    "id": "move_right",
+    "card_name": "Right",
+    "description": "Move your token right one cell.",
+    "cost": 1,
+    "type": 3,
+    "move_direction": [1, 0]
+  }
+]
