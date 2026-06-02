@@ -11,10 +11,4 @@
 		"layout_id": "default",
 		"tags": []
 	},
-	"res://scenes/cards/game_card_layout.tscn": {
-		"enabled": true,
-		"last_modified": 0.0,
-		"layout_id": "game_card",
-		"tags": []
-	}
 }

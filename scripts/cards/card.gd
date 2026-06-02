@@ -5,7 +5,17 @@ class_name GameCard
 extends Card
 
 const ENERGY_HUD_GROUP := "player_energy_hud"
-const SHINE_SHADER := preload("res://shaders/card_shine.gdshader")
+const SHINE_SHADER     := preload("res://shaders/card_shine.gdshader")
+const DEFAULT_PORTRAIT := preload("res://assets/cards/japan_warrior/portrait/slash1.png")
+
+## Change this one value to resize the card — all children scale via anchors.
+@export var card_size: Vector2 = Vector2(200, 300):
+	set(v):
+		card_size = v
+		custom_minimum_size = v
+		size = v
+		pivot_offset = v / 2.0
+		center_pos   = v / 2.0
 
 var consumable: bool = true
 
@@ -16,11 +26,11 @@ var data: CardData:
 		if is_node_ready():
 			_refresh()
 
-@onready var _name_label: Label = $NameLabel
-@onready var _cost_label: Label = $CostLabel
+@onready var _name_label: Label        = $NameLabel
+@onready var _cost_label: Label        = $CostLabel
 @onready var _description_label: Label = $DescriptionLabel
-@onready var _art: TextureRect = $Art
-@onready var _shine: ColorRect = $Shine
+@onready var _art: TextureRect         = $Art
+@onready var _shine: ColorRect         = $Shine
 
 
 ## Skip the SubViewport layout registry — visuals live in direct scene children.
@@ -37,7 +47,7 @@ func _on_button_up() -> void:
 		CG.current_held_item = null
 		drag_ended.emit(self)
 		if not _is_owned():
-			tween_scale()  # still restore scale; rotation is restored by hand layout
+			tween_scale()
 		_on_mouse_exited()
 		_on_focus_exited()
 		if is_hovered():
@@ -49,12 +59,9 @@ func _on_button_up() -> void:
 
 
 func _card_ready() -> void:
-	flat = true           # remove Button's default border/background
-	self_modulate.a = 1   # Card sets this to 0; restore so children are visible
-	size = Vector2(150, 210)
-	custom_minimum_size = Vector2(150, 210)
-	pivot_offset = size / 2.0
-	center_pos   = size / 2.0
+	flat = true
+	self_modulate.a = 1
+	card_size = card_size
 	var mat := ShaderMaterial.new()
 	mat.shader = SHINE_SHADER
 	mat.set_shader_parameter("shine_pos", Vector2(0.5, -1.0))
@@ -78,6 +85,7 @@ func _process(delta: float) -> void:
 func _on_game_focused() -> void:
 	modulate = Color(1.15, 1.15, 1.15)
 	_send_energy_preview(_energy_delta())
+	_send_range_preview(data)
 
 
 func _on_game_unfocused() -> void:
@@ -86,6 +94,7 @@ func _on_game_unfocused() -> void:
 	if _shine and _shine.material:
 		_shine.material.set_shader_parameter("shine_pos", Vector2(0.5, -1.0))
 	_send_energy_preview(0)
+	_send_range_preview(null)
 
 
 func _refresh() -> void:
@@ -98,8 +107,22 @@ func _refresh() -> void:
 	if _description_label:
 		_description_label.text = data.description
 	if _art:
-		_art.texture = data.art
+		_art.texture = data.art if data.art else DEFAULT_PORTRAIT
 
+
+# ── Range highlight — shown on the battlefield board, not on the card ──────
+
+func _send_range_preview(cd: CardData) -> void:
+	var bf := get_tree().get_first_node_in_group("battlefield")
+	if bf == null:
+		return
+	if cd != null and not cd.affected_cells.is_empty():
+		bf.show_range_highlight(cd)
+	else:
+		bf.clear_range_highlight()
+
+
+# ── Energy preview ─────────────────────────────────────────────────────────
 
 func _energy_delta() -> int:
 	if data == null or data.type == CardData.CardType.MOVE:

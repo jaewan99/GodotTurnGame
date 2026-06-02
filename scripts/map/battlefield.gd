@@ -59,6 +59,7 @@ func _ready() -> void:
 	if Engine.is_editor_hint():
 		return  # everything below is runtime-only gameplay wiring
 
+	add_to_group("battlefield")
 	_player = get_node_or_null("Board/PlayerToken") as Token
 	_enemy = get_node_or_null("Board/EnemyToken") as Token
 	_hand = get_node_or_null("UI/Hand") as Hand
@@ -1373,3 +1374,21 @@ func _unhandled_input(event: InputEvent) -> void:
 		KEY_2: if _player: _player.take_damage(5)
 		KEY_3: if _player: _player.spend_energy(2)
 		KEY_4: if _player: _player.gain_energy(3)
+
+
+# ── Range highlight (called by GameCard on hover/drag) ────────────────────
+
+func show_range_highlight(cd: CardData) -> void:
+	if _player == null or cd == null or cd.affected_cells.is_empty():
+		return
+	var board := get_node_or_null("Board") as Board
+	if board == null:
+		return
+	var is_move := cd.type == CardData.CardType.MOVE
+	board.highlight_cells(cd.affected_cells, _player.current_cell, is_move)
+
+
+func clear_range_highlight() -> void:
+	var board := get_node_or_null("Board") as Board
+	if board:
+		board.clear_highlight()

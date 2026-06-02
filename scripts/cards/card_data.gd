@@ -45,6 +45,13 @@ var level: int = 0
 ## x = columns (右+/左-), y = rows (下+/上-). e.g. Down = (0, 1), Up = (0, -1).
 @export var move_direction: Vector2i = Vector2i.ZERO
 
+## Which cells this card affects, relative to the player at (0,0).
+## x: -1=left  0=center  +1=right
+## y: -1=up    0=same row +1=down
+## e.g. slash hits the cell directly in front → [(0,-1)]
+## Empty array = no target display (passive / move cards show their move_direction instead)
+@export var affected_cells: Array[Vector2i] = []
+
 @export_group("Presentation")
 @export var art: Texture2D                     ## the card's illustration
 
@@ -107,4 +114,12 @@ static func _from_dict(d: Dictionary) -> CardData:
 	cd.move_direction = Vector2i(dir[0], dir[1])
 	cd.in_reward_pool = d.get("reward", false)
 	cd.starter_count  = d.get("starter", 0)
+	var art_path: String = d.get("art", "")
+	if art_path != "":
+		cd.art = load(art_path)
+	for cell in d.get("affected_cells", []):
+		cd.affected_cells.append(Vector2i(cell[0], cell[1]))
+	# MOVE cards: if no affected_cells, treat move_direction as the target cell
+	if cd.affected_cells.is_empty() and cd.move_direction != Vector2i.ZERO:
+		cd.affected_cells.append(cd.move_direction)
 	return cd
