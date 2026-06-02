@@ -5,14 +5,20 @@
 [ext_resource type="PackedScene" path="res://scenes/map/token.tscn" id="3_token"]
 [ext_resource type="PackedScene" path="res://scenes/battle/hand.tscn" id="4_hand"]
 [ext_resource type="PackedScene" path="res://scenes/ui/combatant_hud.tscn" id="5_hud"]
-[ext_resource type="PackedScene" path="res://scenes/battle/plan_slot.tscn" id="6_slot"]
-[ext_resource type="PackedScene" path="res://scenes/battle/move_pool.tscn" id="7_pool"]
-[ext_resource type="PackedScene" path="res://scenes/ui/card_viewer.tscn" id="8_viewer"]
+[ext_resource type="PackedScene" path="res://scenes/ui/card_viewer.tscn" id="6_viewer"]
+[ext_resource type="PackedScene" path="res://scenes/battle/deck_pile.tscn" id="7_deck"]
+[ext_resource type="PackedScene" path="res://scenes/battle/discard_pile.tscn" id="8_discard"]
+[ext_resource type="PackedScene" path="res://scenes/battle/plan_bar.tscn" id="9_planbar"]
+[ext_resource type="PackedScene" path="res://scenes/battle/battle_hud.tscn" id="10_hud"]
+[ext_resource type="PackedScene" path="res://scenes/ui/pause_overlay.tscn" id="11_overlay"]
+[ext_resource type="Script" uid="uid://co16sxum7835l" path="res://scripts/ui/game_button.gd" id="12_game_btn"]
+[ext_resource type="PackedScene" path="res://scenes/battle/lock_in_button.tscn" id="13_lockin"]
+[ext_resource type="Texture2D" uid="uid://dbtmn78ywx5mf" path="res://assets/ui/icon_hide.png" id="14_hide"]
 
 [node name="Battlefield" type="Node2D" unique_id=521275716]
 script = ExtResource("2_field")
 
-[node name="Background" type="ColorRect" parent="." unique_id=760895849]
+[node name="Background" type="ColorRect" parent="." unique_id=1283895983]
 offset_right = 1920.0
 offset_bottom = 1080.0
 color = Color(0.184314, 0.227451, 0.164706, 1)
@@ -34,9 +40,6 @@ start_cell = Vector2i(4, 1)
 
 [node name="UI" type="CanvasLayer" parent="." unique_id=1899533083]
 
-[node name="Hand" parent="UI" unique_id=764282949 instance=ExtResource("4_hand")]
-layout_mode = 3
-
 [node name="PlayerHUD" parent="UI" unique_id=1753284725 instance=ExtResource("5_hud")]
 layout_mode = 3
 anchors_preset = 0
@@ -57,21 +60,13 @@ offset_bottom = 92.0
 grow_horizontal = 0
 mirrored = true
 
-[node name="LockInButton" type="Button" parent="UI" unique_id=1518421853]
-anchors_preset = 7
-anchor_left = 0.5
-anchor_top = 1.0
-anchor_right = 0.5
-anchor_bottom = 1.0
-offset_left = -92.0
-offset_top = -917.0
-offset_right = 98.0
-offset_bottom = -877.0
-grow_horizontal = 2
-grow_vertical = 0
-text = "Lock In (0/3)"
+[node name="BattleHUD" parent="UI" unique_id=1581189920 instance=ExtResource("10_hud")]
+layout_mode = 3
 
-[node name="DiscardPile" type="Panel" parent="UI" unique_id=610416569]
+[node name="Hand" parent="UI" unique_id=764282949 instance=ExtResource("4_hand")]
+layout_mode = 3
+
+[node name="DiscardPile" parent="UI" unique_id=610416569 instance=ExtResource("8_discard")]
 anchors_preset = 2
 anchor_top = 1.0
 anchor_bottom = 1.0
@@ -81,16 +76,7 @@ offset_right = 130.0
 offset_bottom = -20.0
 grow_vertical = 0
 
-[node name="Label" type="Label" parent="UI/DiscardPile" unique_id=802851611]
-layout_mode = 0
-anchor_right = 1.0
-anchor_bottom = 1.0
-text = "Discard
-0"
-horizontal_alignment = 1
-vertical_alignment = 1
-
-[node name="DeckPile" type="Panel" parent="UI" unique_id=1703392604]
+[node name="DeckPile" parent="UI" unique_id=1703392604 instance=ExtResource("7_deck")]
 anchors_preset = 3
 anchor_left = 1.0
 anchor_top = 1.0
@@ -103,66 +89,29 @@ offset_bottom = -20.0
 grow_horizontal = 0
 grow_vertical = 0
 
-[node name="Label" type="Label" parent="UI/DeckPile" unique_id=618024391]
-layout_mode = 0
-anchor_right = 1.0
-anchor_bottom = 1.0
-text = "Deck
-0"
-horizontal_alignment = 1
-vertical_alignment = 1
+[node name="PlanBar" parent="UI" unique_id=1778273698 instance=ExtResource("9_planbar")]
 
-[node name="PlanBar" type="HBoxContainer" parent="UI" unique_id=1778273698]
-custom_minimum_size = Vector2(0, -2.77)
-anchors_preset = 8
-anchor_left = 0.5
-anchor_top = 0.5
-anchor_right = 0.5
-anchor_bottom = 0.5
-offset_left = -250.0
-offset_top = -110.0
-offset_right = 250.0
-offset_bottom = 110.0
-grow_horizontal = 2
-grow_vertical = 2
-theme_override_constants/separation = 16
-alignment = 1
-
-[node name="Slot0" parent="UI/PlanBar" unique_id=1737284431 instance=ExtResource("6_slot")]
-layout_mode = 2
-
-[node name="Slot1" parent="UI/PlanBar" unique_id=1283700340 instance=ExtResource("6_slot")]
-layout_mode = 2
-index = 1
-
-[node name="Slot2" parent="UI/PlanBar" unique_id=1527355139 instance=ExtResource("6_slot")]
-layout_mode = 2
-index = 2
-
-[node name="MovePool" parent="UI" unique_id=1500752034 instance=ExtResource("7_pool")]
-anchors_preset = 11
+[node name="LockInButton" parent="UI" unique_id=1518421853 instance=ExtResource("13_lockin")]
+anchors_preset = 6
 anchor_left = 1.0
+anchor_top = 0.5
 anchor_right = 1.0
-anchor_bottom = 1.0
-offset_left = -190.0
-offset_top = 104.0
-offset_right = -10.0
-offset_bottom = -150.0
+anchor_bottom = 0.5
+offset_left = -320.0
+offset_top = -140.0
+offset_right = -147.0011
+offset_bottom = 83.50037
 grow_horizontal = 0
+grow_vertical = 2
 
 [node name="HideButton" type="Button" parent="UI" unique_id=1841942561]
-anchors_preset = 7
-anchor_left = 0.5
-anchor_top = 1.0
-anchor_right = 0.5
-anchor_bottom = 1.0
-offset_left = -45.0
-offset_top = -811.0
-offset_right = 45.0
-offset_bottom = -780.0
-grow_horizontal = 2
-grow_vertical = 0
-text = "Hide"
+texture_filter = 2
+offset_left = 930.0
+offset_top = 940.0
+offset_right = 990.0
+offset_bottom = 1000.0
+icon = ExtResource("14_hide")
+script = ExtResource("12_game_btn")
 
 [node name="Banner" type="Label" parent="UI" unique_id=276157750]
 visible = false
@@ -196,54 +145,7 @@ grow_vertical = 2
 horizontal_alignment = 1
 vertical_alignment = 1
 
-[node name="PauseButton" type="Button" parent="UI" unique_id=785629017]
-process_mode = 3
-offset_left = 790.0
-offset_top = 26.0
-offset_right = 868.0
-offset_bottom = 62.0
-text = "Pause"
+[node name="PauseOverlay" parent="UI" unique_id=620661136 instance=ExtResource("11_overlay")]
 
-[node name="RoundLabel" type="Label" parent="UI" unique_id=1581189919]
-offset_left = 872.0
-offset_top = 28.0
-offset_right = 1048.0
-offset_bottom = 62.0
-text = "Round 1"
-horizontal_alignment = 1
-vertical_alignment = 1
-
-[node name="BagButton" type="Button" parent="UI" unique_id=1923804351]
-offset_left = 1052.0
-offset_top = 26.0
-offset_right = 1130.0
-offset_bottom = 62.0
-text = "Bag"
-
-[node name="CardViewer" parent="UI" unique_id=112233445 instance=ExtResource("8_viewer")]
+[node name="CardViewer" parent="UI" unique_id=112233445 instance=ExtResource("6_viewer")]
 layout_mode = 3
-
-[node name="PauseOverlay" type="ColorRect" parent="UI" unique_id=620661136]
-process_mode = 3
-visible = false
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-offset_top = 100.0
-color = Color(0, 0, 0, 0.55)
-
-[node name="PausedLabel" type="Label" parent="UI/PauseOverlay" unique_id=2068359219]
-layout_mode = 0
-anchor_left = 0.5
-anchor_top = 0.5
-anchor_right = 0.5
-anchor_bottom = 0.5
-offset_left = -150.0
-offset_top = -24.0
-offset_right = 150.0
-offset_bottom = 24.0
-grow_horizontal = 2
-grow_vertical = 2
-text = "PAUSED"
-horizontal_alignment = 1
-vertical_alignment = 1

@@ -53,6 +53,12 @@ var _card_viewer: CardViewer
 # Hand cards discarding on lock-in; freed at the start of _cleanup().
 var _discarding_hand_cards: Array[GameCard] = []
 
+# Move placeholder + picker
+var _move_placeholder: GameCard
+var _move_placeholder_home := Vector2(1640.0, 845.0)
+var _move_picker: MovePicker
+var _move_picker_target_slot: int = -1
+
 
 func _ready() -> void:
 	_place_tokens()
@@ -89,16 +95,18 @@ func _ready() -> void:
 	_lock_in = get_node_or_null("UI/LockInButton") as Button
 	if _lock_in != null:
 		_lock_in.pressed.connect(_on_lock_in)
+		_lock_in.mouse_entered.connect(_on_lock_in_hover.bind(true))
+		_lock_in.mouse_exited.connect(_on_lock_in_hover.bind(false))
 
 	var hide_btn := get_node_or_null("UI/HideButton") as Button
 	if hide_btn != null:
 		hide_btn.pressed.connect(_on_toggle_hide)
 
-	var pause_btn := get_node_or_null("UI/PauseButton") as Button
+	var pause_btn := get_node_or_null("UI/BattleHUD/PauseButton") as Button
 	if pause_btn != null:
 		pause_btn.pressed.connect(_on_pause_toggle)
 
-	var bag_btn := get_node_or_null("UI/BagButton") as Button
+	var bag_btn := get_node_or_null("UI/BattleHUD/BagButton") as Button
 	if bag_btn != null:
 		bag_btn.pressed.connect(_on_bag_pressed)
 
@@ -136,6 +144,7 @@ func _ready() -> void:
 	_draw_to_hand_size()
 	_update_pile_info()
 	_apply_equipment()
+	_setup_move_placeholder()
 	_begin_plan()
 
 
@@ -161,7 +170,7 @@ func _begin_plan() -> void:
 	_plan = [null, null, null]
 	_enemy_plan = []
 	_round += 1
-	var round_label := get_node_or_null("UI/RoundLabel") as Label
+	var round_label := get_node_or_null("UI/BattleHUD/RoundLabel") as Label
 	if round_label != null:
 		round_label.text = "Round %d" % _round
 	for s in _slot_nodes:
@@ -182,14 +191,16 @@ func _begin_plan() -> void:
 ## Show/hide all the card-planning UI. Hidden during the fight so the player can
 ## just watch the board; shown again in the plan phase.
 func _set_planning_ui_visible(on: bool) -> void:
-	for path in ["UI/Hand", "UI/PlanBar", "UI/MovePool", "UI/LockInButton", "UI/HideButton"]:
+	for path in ["UI/Hand", "UI/PlanBar", "UI/LockInButton", "UI/HideButton"]:
 		var n := get_node_or_null(path) as CanvasItem
 		if n != null:
 			n.visible = on
+	if _move_placeholder != null:
+		_move_placeholder.visible = on
 	if on:
 		var hide_btn := get_node_or_null("UI/HideButton") as Button
 		if hide_btn != null:
-			hide_btn.text = "Hide"
+			hide_btn.icon = _ICON_HIDE
 
 
 ## A card was dropped onto slot `index`.
@@ -200,6 +211,11 @@ func _on_slot_dropped(index: int, payload: Dictionary) -> void:
 		return  # slot already filled
 	var data: CardData = payload.get("data")
 	if data == null:
+		return
+	# Move placeholder: open the picker instead of placing the card.
+	if data.id == &"move_chooser":
+		_move_picker_target_slot = index
+		_move_picker.show()
 		return
 	var consumable: bool = payload.get("consumable", false)
 	if data.type != CardData.CardType.MOVE:
@@ -230,6 +246,63 @@ func _on_slot_dropped(index: int, payload: Dictionary) -> void:
 	card.mouse_filter = Control.MOUSE_FILTER_IGNORE  # let clicks reach the slot (to clear)
 	slot.show_placeholder(false)
 	_plan[index] = {"data": data, "consumable": consumable, "card": card}
+	_refresh_lock_in()
+
+
+## Build the Move placeholder card and the picker popup, add both to UI.
+func _setup_move_placeholder() -> void:
+	var ui := get_node_or_null("UI")
+	if ui == null:
+		return
+
+	var placeholder_data := CardData.new()
+	placeholder_data.id          = &"move_chooser"
+	placeholder_data.card_name   = "Move"
+	placeholder_data.type        = CardData.CardType.MOVE
+	placeholder_data.cost        = 0
+	placeholder_data.description = "Choose\na direction"
+
+	_move_placeholder = CARD_SCENE.instantiate()
+	_move_placeholder.consumable = false
+	_move_placeholder.data       = placeholder_data
+	_move_placeholder.card_size  = CARD_SIZE
+	_move_placeholder.drag_ended.connect(_on_placeholder_drag_ended)
+	ui.add_child(_move_placeholder)
+	_move_placeholder.position = _move_placeholder_home
+
+	_move_picker = MovePicker.new()
+	ui.add_child(_move_picker)
+	_move_picker.move_chosen.connect(_on_move_picker_chosen)
+
+
+func _on_placeholder_drag_ended(_card: GameCard) -> void:
+	_move_placeholder.position  = _move_placeholder_home
+	_move_placeholder.rotation  = 0.0
+	_move_placeholder.scale     = Vector2.ONE
+
+
+## Called when the player picks a direction in the MovePicker popup.
+func _on_move_picker_chosen(cd: CardData) -> void:
+	var index := _move_picker_target_slot
+	_move_picker_target_slot = -1
+	if _phase != Phase.PLAN or index < 0 or index >= MAX_SLOTS:
+		return
+	if _plan[index] != null:
+		return
+	var card: GameCard = CARD_SCENE.instantiate()
+	card.consumable   = false
+	card.data         = cd
+	var slot          = _slot_nodes[index]
+	slot.add_child(card)
+	card.set_anchors_preset(Control.PRESET_TOP_LEFT, false)
+	card.position     = Vector2.ZERO
+	card.rotation     = 0.0
+	card.scale        = Vector2.ONE
+	card.pivot_offset = Vector2.ZERO
+	card.size         = CARD_SIZE
+	card.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	slot.show_placeholder(false)
+	_plan[index] = {"data": cd, "consumable": false, "card": card}
 	_refresh_lock_in()
 
 
@@ -267,14 +340,23 @@ func _projected_energy() -> int:
 	return e
 
 
+func _on_lock_in_hover(is_hovered: bool) -> void:
+	var mat := _lock_in.material as ShaderMaterial
+	if mat and mat.get_shader_parameter("active"):
+		mat.set_shader_parameter("hovered", is_hovered)
+
+
 func _refresh_lock_in() -> void:
 	var n := 0
 	for entry in _plan:
 		if entry != null:
 			n += 1
 	if _lock_in != null:
-		_lock_in.text = "Lock In (%d/%d)" % [n, MAX_SLOTS]
-		_lock_in.disabled = n < MAX_SLOTS
+		var ready := n == MAX_SLOTS
+		_lock_in.disabled = not ready
+		var mat := _lock_in.material as ShaderMaterial
+		if mat:
+			mat.set_shader_parameter("active", ready)
 	_update_slot_states()
 
 
@@ -290,17 +372,21 @@ func _update_slot_states() -> void:
 		slot.modulate = Color.WHITE if (filled or is_next) else Color(1, 1, 1, 0.4)
 
 
+const _ICON_HIDE   := preload("res://assets/ui/icon_hide.png")
+const _ICON_SHOW   := preload("res://assets/ui/icon_show.png")
+const _ICON_PAUSE  := preload("res://assets/ui/icon_pause.png")
+const _ICON_RESUME := preload("res://assets/ui/icon_resume.png")
+
 func _on_toggle_hide() -> void:
 	var plan_bar := get_node_or_null("UI/PlanBar") as CanvasItem
-	var move_pool := get_node_or_null("UI/MovePool") as CanvasItem
 	var show := not (plan_bar != null and plan_bar.visible)
 	if plan_bar != null:
 		plan_bar.visible = show
-	if move_pool != null:
-		move_pool.visible = show
+	if _move_placeholder != null:
+		_move_placeholder.visible = show
 	var btn := get_node_or_null("UI/HideButton") as Button
 	if btn != null:
-		btn.text = "Hide" if show else "Show"
+		btn.icon = _ICON_HIDE if show else _ICON_SHOW
 
 
 ## Pause / resume. The PauseButton + overlay run with PROCESS_MODE_ALWAYS so they
@@ -311,9 +397,9 @@ func _on_pause_toggle() -> void:
 	var overlay := get_node_or_null("UI/PauseOverlay") as CanvasItem
 	if overlay != null:
 		overlay.visible = paused
-	var btn := get_node_or_null("UI/PauseButton") as Button
+	var btn := get_node_or_null("UI/BattleHUD/PauseButton") as Button
 	if btn != null:
-		btn.text = "Resume" if paused else "Pause"
+		btn.icon = _ICON_RESUME if paused else _ICON_PAUSE
 
 
 func _on_bag_pressed() -> void:
@@ -616,6 +702,7 @@ func _update_pile_info() -> void:
 
 # ── Plan display — card-back reveal during RESOLVE ────────────────────────────
 
+const PLAN_CARD_SCENE := preload("res://scenes/battle/plan_card.tscn")
 const _CARD_W   := 100.0
 const _CARD_H   := 140.0
 const _CARD_GAP := 110.0   # center-to-center spacing between slots
@@ -627,16 +714,18 @@ func _show_plan_displays() -> void:
 	# Player row: below PlayerHUD, top-left (y=100)
 	for i in MAX_SLOTS:
 		var cd: CardData = _plan[i].data if _plan[i] != null else null
-		var card := _make_plan_card(cd)
-		card.position = Vector2(20.0 + i * _CARD_GAP, 100.0)
+		var card: PlanCard = PLAN_CARD_SCENE.instantiate()
 		ui.add_child(card)
+		card.setup(cd)
+		card.position = Vector2(20.0 + i * _CARD_GAP, 100.0)
 		_resolve_display.append(card)
 	# Enemy row: below EnemyHUD, top-right (y=100)
 	for i in MAX_SLOTS:
 		var cd: CardData = _enemy_plan[i] if i < _enemy_plan.size() else null
-		var card := _make_plan_card(cd)
-		card.position = Vector2(1580.0 + i * _CARD_GAP, 100.0)
+		var card: PlanCard = PLAN_CARD_SCENE.instantiate()
 		ui.add_child(card)
+		card.setup(cd)
+		card.position = Vector2(1580.0 + i * _CARD_GAP, 100.0)
 		_resolve_display.append(card)
 
 
@@ -650,22 +739,11 @@ func _reveal_slot_indicators(slot: int) -> void:
 		var ei := MAX_SLOTS + i
 		if ei < _resolve_display.size():
 			_resolve_display[ei].modulate = dim
-	_flip_card(_resolve_display[slot] if slot < _resolve_display.size() else null)
-	_flip_card(_resolve_display[MAX_SLOTS + slot] if MAX_SLOTS + slot < _resolve_display.size() else null)
+	if slot < _resolve_display.size():
+		(_resolve_display[slot] as PlanCard).flip()
+	if MAX_SLOTS + slot < _resolve_display.size():
+		(_resolve_display[MAX_SLOTS + slot] as PlanCard).flip()
 	await get_tree().create_timer(0.32).timeout   # flip takes 0.30 s
-
-
-func _flip_card(card: Control) -> void:
-	if card == null:
-		return
-	var back  := card.get_node_or_null("Back")  as Control
-	var front := card.get_node_or_null("Front") as Control
-	if back == null or front == null or not back.visible:
-		return
-	var tw := card.create_tween().set_trans(Tween.TRANS_SINE)
-	tw.tween_property(card, "scale:x", 0.0, 0.15).set_ease(Tween.EASE_IN)
-	tw.tween_callback(func(): back.hide(); front.show())
-	tw.tween_property(card, "scale:x", 1.0, 0.15).set_ease(Tween.EASE_OUT)
 
 
 func _clear_plan_displays() -> void:
@@ -675,108 +753,6 @@ func _clear_plan_displays() -> void:
 	_resolve_display.clear()
 
 
-## Container with a face-down Back child and a face-up Front child.
-func _make_plan_card(cd: CardData) -> Control:
-	var W := _CARD_W; var H := _CARD_H
-	var container := Control.new()
-	container.custom_minimum_size = Vector2(W, H)
-	container.size                = Vector2(W, H)
-	container.pivot_offset        = Vector2(W * 0.5, H * 0.5)
-
-	# Back side
-	var back := Panel.new()
-	back.name = "Back"; back.position = Vector2.ZERO; back.size = Vector2(W, H)
-	var bs := StyleBoxFlat.new()
-	bs.bg_color     = Color(0.11, 0.09, 0.16)
-	bs.border_width_left = 2; bs.border_width_right  = 2
-	bs.border_width_top  = 2; bs.border_width_bottom = 2
-	bs.border_color = Color(0.52, 0.42, 0.18)
-	bs.corner_radius_top_left    = 6; bs.corner_radius_top_right    = 6
-	bs.corner_radius_bottom_left = 6; bs.corner_radius_bottom_right = 6
-	back.add_theme_stylebox_override("panel", bs)
-	var q := Label.new()
-	q.text = "?"; q.add_theme_font_size_override("font_size", 36)
-	q.modulate = Color(0.42, 0.32, 0.13)
-	q.set_anchors_preset(Control.PRESET_FULL_RECT)
-	q.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	q.vertical_alignment   = VERTICAL_ALIGNMENT_CENTER
-	back.add_child(q)
-	container.add_child(back)
-
-	# Front side (hidden until flipped)
-	var front := _make_card_front(cd, W, H)
-	front.name = "Front"; front.visible = false
-	container.add_child(front)
-
-	return container
-
-
-func _make_card_front(cd: CardData, W: float, H: float) -> Panel:
-	var type_color := Color(0.4, 0.4, 0.4)
-	if cd != null:
-		match cd.type:
-			CardData.CardType.ATTACK: type_color = Color(0.82, 0.25, 0.25)
-			CardData.CardType.SKILL:  type_color = Color(0.25, 0.56, 0.88)
-			CardData.CardType.POWER:  type_color = Color(0.65, 0.25, 0.88)
-			CardData.CardType.MOVE:   type_color = Color(0.25, 0.76, 0.38)
-
-	var panel := Panel.new()
-	panel.position = Vector2.ZERO; panel.size = Vector2(W, H)
-	var fs := StyleBoxFlat.new()
-	fs.bg_color     = Color(0.07, 0.06, 0.05)
-	fs.border_width_left = 2; fs.border_width_right  = 2
-	fs.border_width_top  = 2; fs.border_width_bottom = 2
-	fs.border_color = type_color
-	fs.corner_radius_top_left    = 6; fs.corner_radius_top_right    = 6
-	fs.corner_radius_bottom_left = 6; fs.corner_radius_bottom_right = 6
-	panel.add_theme_stylebox_override("panel", fs)
-
-	var vbox := VBoxContainer.new()
-	vbox.position = Vector2(6.0, 6.0); vbox.size = Vector2(W - 12.0, H - 12.0)
-	vbox.add_theme_constant_override("separation", 4)
-	panel.add_child(vbox)
-
-	if cd != null:
-		var name_lbl := Label.new()
-		name_lbl.text = cd.card_name
-		name_lbl.add_theme_font_size_override("font_size", 13)
-		name_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		name_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		vbox.add_child(name_lbl)
-		vbox.add_child(HSeparator.new())
-		var type_tag: Dictionary = {
-			CardData.CardType.ATTACK: "ATK", CardData.CardType.SKILL: "SKL",
-			CardData.CardType.POWER:  "PWR", CardData.CardType.MOVE:  "MOV",
-		}
-		var type_lbl := Label.new()
-		type_lbl.text = type_tag.get(cd.type, "?")
-		type_lbl.add_theme_font_size_override("font_size", 11)
-		type_lbl.modulate = type_color
-		type_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		vbox.add_child(type_lbl)
-		var cost_lbl := Label.new()
-		cost_lbl.text = "Cost: %d" % cd.cost
-		cost_lbl.add_theme_font_size_override("font_size", 11)
-		cost_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		vbox.add_child(cost_lbl)
-		if cd.description.length() > 0:
-			var spacer := Control.new()
-			spacer.size_flags_vertical = Control.SIZE_EXPAND_FILL
-			vbox.add_child(spacer)
-			var desc_lbl := Label.new()
-			desc_lbl.text = cd.description
-			desc_lbl.add_theme_font_size_override("font_size", 9)
-			desc_lbl.modulate = Color(0.78, 0.78, 0.78)
-			desc_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-			desc_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-			vbox.add_child(desc_lbl)
-	else:
-		var empty := Label.new()
-		empty.text = "—"; empty.modulate = Color(0.35, 0.35, 0.35)
-		empty.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		vbox.add_child(empty)
-
-	return panel
 
 
 # ── Positioning helpers ───────────────────────────────────────────────────────
