@@ -6,7 +6,7 @@
 	"cost": 3,
 	"type": 0,
 	"damage": 6,
-	"affected_cells": [[0, -1]],
+	"affected_cells": [[1, 0]],
 	"art": "res://assets/cards/japan_warrior/portrait/slash1.png",
 	"reward": true,
 	"starter": 4
@@ -18,7 +18,7 @@
 	"cost": 5,
 	"type": 0,
 	"damage": 10,
-	"affected_cells": [[0, -1]],
+	"affected_cells": [[1, 0]],
 	"art": "res://assets/cards/japan_warrior/portrait/slash1.png",
 	"reward": true,
 	"starter": 2
