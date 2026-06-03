@@ -7,7 +7,6 @@
 [ext_resource type="PackedScene" path="res://scenes/ui/combatant_hud.tscn" id="5_hud"]
 [ext_resource type="PackedScene" path="res://scenes/battle/plan_slot.tscn" id="6_slot"]
 [ext_resource type="PackedScene" path="res://scenes/battle/move_pool.tscn" id="7_pool"]
-[ext_resource type="PackedScene" path="res://scenes/ui/card_viewer.tscn" id="8_viewer"]
 
 [node name="Battlefield" type="Node2D" unique_id=521275716]
 script = ExtResource("2_field")
@@ -71,7 +70,7 @@ grow_horizontal = 2
 grow_vertical = 0
 text = "Lock In (0/3)"
 
-[node name="DiscardPile" type="Panel" parent="UI" unique_id=610416569]
+[node name="DiscardPile" type="Button" parent="UI" unique_id=610416569]
 anchors_preset = 2
 anchor_top = 1.0
 anchor_bottom = 1.0
@@ -90,7 +89,7 @@ text = "Discard
 horizontal_alignment = 1
 vertical_alignment = 1
 
-[node name="DeckPile" type="Panel" parent="UI" unique_id=1703392604]
+[node name="DeckPile" type="Button" parent="UI" unique_id=1703392604]
 anchors_preset = 3
 anchor_left = 1.0
 anchor_top = 1.0
@@ -219,9 +218,6 @@ offset_top = 26.0
 offset_right = 1130.0
 offset_bottom = 62.0
 text = "Bag"
-
-[node name="CardViewer" parent="UI" unique_id=112233445 instance=ExtResource("8_viewer")]
-layout_mode = 3
 
 [node name="PauseOverlay" type="ColorRect" parent="UI" unique_id=620661136]
 process_mode = 3

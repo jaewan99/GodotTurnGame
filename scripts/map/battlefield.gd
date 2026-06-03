@@ -25,6 +25,7 @@ const SHARE_OFFSET := 32.0   # px to nudge each token sideways when sharing a ce
 const CARD_SCENE := preload("res://scenes/cards/card.tscn")
 const CARD_SIZE := Vector2(150, 210)
 const MAP_SCENE := "res://scenes/map/map.tscn"
+const CARD_VIEWER_SCENE := preload("res://scenes/ui/card_viewer.tscn")
 
 
 enum Phase { PLAN, RESOLVE }
@@ -49,7 +50,7 @@ var _player_damage_bonus: int = 0   # from equipped WEAPON
 var _player_crit_chance: int = 0    # from equipped SHOES (0–100 %)
 var _resolve_display: Array[Control] = []  # plan indicator panels, freed each round
 var _all_cards: Array[CardData] = []  # full collection for the bag view
-var _card_viewer: CardViewer
+var _card_viewer: Node  # CardViewer — kept as Node to avoid cast-null if class not yet registered
 # Hand cards discarding on lock-in; freed at the start of _cleanup().
 var _discarding_hand_cards: Array[GameCard] = []
 
@@ -88,28 +89,41 @@ func _ready() -> void:
 	_lock_in = get_node_or_null("UI/LockInButton") as Button
 	if _lock_in != null:
 		_lock_in.pressed.connect(_on_lock_in)
+		_clear_btn_bg(_lock_in)
 
 	var hide_btn := get_node_or_null("UI/HideButton") as Button
 	if hide_btn != null:
 		hide_btn.pressed.connect(_on_toggle_hide)
+		_clear_btn_bg(hide_btn)
 
 	var pause_btn := get_node_or_null("UI/PauseButton") as Button
 	if pause_btn != null:
 		pause_btn.pressed.connect(_on_pause_toggle)
+		_clear_btn_bg(pause_btn)
 
 	var bag_btn := get_node_or_null("UI/BagButton") as Button
 	if bag_btn != null:
 		bag_btn.pressed.connect(_on_bag_pressed)
+		_clear_btn_bg(bag_btn)
 
-	_card_viewer = get_node_or_null("UI/CardViewer") as CardViewer
+	_card_viewer = CARD_VIEWER_SCENE.instantiate()
+	get_node("UI").add_child(_card_viewer)
 
-	var discard_panel := get_node_or_null("UI/DiscardPile")
-	if discard_panel != null:
-		discard_panel.gui_input.connect(_on_discard_panel_input)
+	var discard_btn := get_node_or_null("UI/DiscardPile") as Button
+	if discard_btn != null:
+		_style_pile_btn(discard_btn)
+		discard_btn.pressed.connect(func():
+			if _card_viewer != null:
+				_card_viewer.call("show_cards", "Discard Pile", Array(_deck.discard_pile))
+		)
 
-	var deck_panel := get_node_or_null("UI/DeckPile")
-	if deck_panel != null:
-		deck_panel.gui_input.connect(_on_deck_panel_input)
+	var deck_btn := get_node_or_null("UI/DeckPile") as Button
+	if deck_btn != null:
+		_style_pile_btn(deck_btn)
+		deck_btn.pressed.connect(func():
+			if _card_viewer != null:
+				_card_viewer.call("show_cards", "Draw Pile", Array(_deck.draw_pile))
+		)
 
 	_move_keys = {
 		KEY_UP: CardData.by_id(&"move_up"),
@@ -317,19 +331,7 @@ func _on_pause_toggle() -> void:
 
 func _on_bag_pressed() -> void:
 	if _card_viewer != null:
-		_card_viewer.show_cards("Bag — All Cards", _all_cards)
-
-
-func _on_discard_panel_input(event: InputEvent) -> void:
-	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
-		if _card_viewer != null:
-			_card_viewer.show_cards("Discard Pile", _deck.discard_pile)
-
-
-func _on_deck_panel_input(event: InputEvent) -> void:
-	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
-		if _card_viewer != null:
-			_card_viewer.show_cards("Draw Pile", _deck.draw_pile)
+		_card_viewer.call("show_cards", "Bag — All Cards", Array(_all_cards))
 
 
 ## Pop a short message in the center for ~2.5s. Overlapping calls reset the timer.
@@ -569,6 +571,40 @@ func _do_action(data: CardData, actor: Token) -> bool:
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
+
+## Remove the dark background from a plain UI button (keep text + subtle hover).
+func _clear_btn_bg(btn: Button) -> void:
+	if btn == null:
+		return
+	var empty := StyleBoxFlat.new()
+	empty.draw_center = false
+	var hover := StyleBoxFlat.new()
+	hover.bg_color = Color(1.0, 1.0, 1.0, 0.08)
+	for state in ["normal", "focus", "disabled"]:
+		btn.add_theme_stylebox_override(state, empty)
+	for state in ["hover", "pressed"]:
+		btn.add_theme_stylebox_override(state, hover)
+
+
+## Style a pile Button to look like a clickable panel (dark bg + border).
+func _style_pile_btn(btn: Button) -> void:
+	if btn == null:
+		return
+	var s := StyleBoxFlat.new()
+	s.bg_color = Color(0.07, 0.07, 0.10, 0.85)
+	s.border_width_left   = 1; s.border_width_right  = 1
+	s.border_width_top    = 1; s.border_width_bottom = 1
+	s.border_color        = Color(0.35, 0.35, 0.50)
+	s.corner_radius_top_left    = 4; s.corner_radius_top_right    = 4
+	s.corner_radius_bottom_left = 4; s.corner_radius_bottom_right = 4
+	btn.add_theme_stylebox_override("normal", s)
+	btn.add_theme_stylebox_override("focus", s)
+	var h := s.duplicate() as StyleBoxFlat
+	h.bg_color = Color(0.14, 0.14, 0.22, 0.90)
+	btn.add_theme_stylebox_override("hover", h)
+	btn.add_theme_stylebox_override("pressed", h)
+
+
 func _next_free_slot() -> int:
 	for i in range(MAX_SLOTS):
 		if _plan[i] == null:

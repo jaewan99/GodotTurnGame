@@ -29,7 +29,7 @@ scripts/
     map_generator.gd← radial graph builder (5+7+1 nodes)
     map_node.gd     ← MapNode Resource (id, type, pos, connections, visited)
     map_node_ui.gd  ← circular Button per node (visited/reachable/locked states)
-    battlefield.gd  ← battle controller + WeGo turn loop (~700 lines)
+    battlefield.gd  ← battle controller + WeGo turn loop (~760 lines)
     board.gd        ← 3×3 chess grid (@tool, editable in editor)
     token.gd        ← combatant (HP, energy, block, movement, facing)
   battle/
@@ -132,6 +132,11 @@ Card `_get_drag_data()` → slot `_drop_data()`. Payload: `{ "data": CardData, "
 - Labels/Controls inside plan slots get `mouse_filter = MOUSE_FILTER_IGNORE` so clicks reach the slot
 - Energy preview: cards emit hover signal → `player_energy_hud` group → HUD shows red/green chunk
 - All overlays are built as `CanvasLayer` (layer 10) added directly to the scene; screens swap by calling `_clear_children(root)` then rebuilding
+
+### Battle UI — button styling (battlefield.gd)
+- **DeckPile / DiscardPile** in `battlefield.tscn` are `Button` nodes (not `Panel`). Their `pressed` signal opens the CardViewer. Styled via `_style_pile_btn()` — dark semi-transparent bg + border.
+- **LockInButton, HideButton, PauseButton, BagButton** have their dark default background stripped by `_clear_btn_bg()` (called in `_ready()`). No background on normal state; subtle white-10% highlight on hover/pressed.
+- **Do NOT use `gui_input` on Panel for clickable areas** — it is unreliable when sibling Controls overlap. Use `Button.pressed` instead.
 
 ## What is NOT yet implemented
 - Rest / Shop node logic (toast placeholder)

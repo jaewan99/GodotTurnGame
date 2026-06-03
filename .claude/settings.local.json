@@ -33,7 +33,21 @@
       "WebFetch(domain:gameliberty.gumroad.com)",
       "WebFetch(domain:artstation.com)",
       "WebFetch(domain:noiracide.itch.io)",
-      "WebFetch(domain:japassou.itch.io)"
+      "WebFetch(domain:japassou.itch.io)",
+      "Bash(dir \"D:\\\\godot\\\\Godot\\\\turnBasedAction\" /b /s)",
+      "Bash(findstr /i \".png\")",
+      "Bash(findstr /i \"card\\\\|energy\\\\|japan\\\\|general\\\\|assets\")",
+      "Bash(find \"D:/godot/Godot/turnBasedAction\" -name \"*.png\" | grep -v addons | grep -v gut)",
+      "Bash(xargs grep -l \"mipmaps/generate=false\")",
+      "Bash(sed -i 's/mipmaps\\\\/generate=false/mipmaps\\\\/generate=true/g' \\\\ *)",
+      "Bash(dir \"D:\\\\godot\\\\Godot\\\\turnBasedAction\\\\assets\\\\cards\\\\japan_warrior\\\\\" /b)",
+      "Bash(sed -i 's/mipmaps\\\\/generate=false/mipmaps\\\\/generate=true/' D:/godot/Godot/turnBasedAction/assets/ui/*.import && echo \"done\")",
+      "Bash(sed -i 's|get_node_or_null\\(\"UI/PauseButton\"\\)|get_node_or_null\\(\"UI/BattleHUD/PauseButton\"\\)|g' D:/godot/Godot/turnBasedAction/scripts/map/battlefield.gd)",
+      "Bash(sed -i 's|get_node_or_null\\(\"UI/RoundLabel\"\\)|get_node_or_null\\(\"UI/BattleHUD/RoundLabel\"\\)|g' D:/godot/Godot/turnBasedAction/scripts/map/battlefield.gd)",
+      "Bash(sed -i 's|get_node_or_null\\(\"UI/BagButton\"\\)|get_node_or_null\\(\"UI/BattleHUD/BagButton\"\\)|g' D:/godot/Godot/turnBasedAction/scripts/map/battlefield.gd)",
+      "Bash(sed -i 's|get_node_or_null\\(\"UI/PauseOverlay\"\\)|get_node_or_null\\(\"UI/PauseOverlay\"\\)|g' D:/godot/Godot/turnBasedAction/scripts/map/battlefield.gd)",
+      "Bash(git -C \"D:\\\\godot\\\\Godot\\\\turnBasedAction\\\\.claude\\\\worktrees\\\\elegant-chatelet-2cfe6e\" status)",
+      "Bash(git -C \"D:\\\\godot\\\\Godot\\\\turnBasedAction\\\\.claude\\\\worktrees\\\\elegant-chatelet-2cfe6e\" diff --stat HEAD)"
     ]
   }
 }
