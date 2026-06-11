@@ -1,0 +1,28 @@
+[gd_scene format=3 uid="uid://5clqinvc25co"]
+
+[ext_resource type="PackedScene" uid="uid://ch33oopbepuaj" path="res://scenes/ui/pause_button.tscn" id="1_pause"]
+[ext_resource type="PackedScene" path="res://scenes/ui/bag_button.tscn" id="2_bag"]
+
+[node name="BattleHUD" type="HBoxContainer" unique_id=1320492205]
+offset_left = 780.0
+offset_top = 20.0
+offset_right = 1217.0
+offset_bottom = 298.0
+theme_override_constants/separation = 8
+
+[node name="PauseButton" parent="." unique_id=2008883219 instance=ExtResource("1_pause")]
+layout_mode = 2
+text = "Pause"
+icon = null
+
+[node name="RoundLabel" type="Label" parent="." unique_id=1443078684]
+custom_minimum_size = Vector2(180, 0)
+layout_mode = 2
+text = "Round 1"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="BagButton" parent="." unique_id=1361336126 instance=ExtResource("2_bag")]
+layout_mode = 2
+text = "bag"
+icon = null

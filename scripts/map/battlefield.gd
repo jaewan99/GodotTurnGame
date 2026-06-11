@@ -23,7 +23,7 @@ const HAND_SIZE := 5
 const MAX_SLOTS := 3
 const SHARE_OFFSET := 32.0   # px to nudge each token sideways when sharing a cell
 const CARD_SCENE := preload("res://scenes/cards/card.tscn")
-const CARD_SIZE := Vector2(150, 210)
+const CARD_SIZE := Vector2(200, 300)
 const MAP_SCENE := "res://scenes/map/map.tscn"
 
 
@@ -41,6 +41,7 @@ var _enemy_plan: Array = []   # filled by AI in Step 3b
 
 var _slot_nodes: Array = []
 var _lock_in: Button
+var _hide_btn: Button
 var _move_keys: Dictionary = {}     # arrow keycode -> move CardData
 var _moves_by_dir: Dictionary = {}  # Vector2i direction -> move CardData (for the AI)
 var _toast_token: int = 0           # guards overlapping toast timers
@@ -48,12 +49,17 @@ var _round: int = 0                 # current round number (shown top-center)
 var _player_damage_bonus: int = 0   # from equipped WEAPON
 var _player_crit_chance: int = 0    # from equipped SHOES (0–100 %)
 var _resolve_display: Array[Control] = []  # plan indicator panels, freed each round
+var _intent_displays: Array[Control] = []  # enemy intent chips shown during PLAN phase
 var _all_cards: Array[CardData] = []  # full collection for the bag view
 var _card_viewer: CardViewer
 # Hand cards discarding on lock-in; freed at the start of _cleanup().
 var _discarding_hand_cards: Array[GameCard] = []
 
 # Move placeholder + picker
+var _ai: EnemyAI
+var _enemy_attack_card: CardData
+var _enemy_recover_card: CardData
+
 var _move_placeholder: GameCard
 var _move_placeholder_home := Vector2(1640.0, 845.0)
 var _move_picker: MovePicker
@@ -98,9 +104,11 @@ func _ready() -> void:
 		_lock_in.mouse_entered.connect(_on_lock_in_hover.bind(true))
 		_lock_in.mouse_exited.connect(_on_lock_in_hover.bind(false))
 
-	var hide_btn := get_node_or_null("UI/HideButton") as Button
-	if hide_btn != null:
-		hide_btn.pressed.connect(_on_toggle_hide)
+	_hide_btn = get_node_or_null("UI/HideButton") as Button
+	if _hide_btn != null:
+		_hide_btn.pressed.connect(_on_toggle_hide)
+		_hide_btn.mouse_entered.connect(_on_hide_hover.bind(true))
+		_hide_btn.mouse_exited.connect(_on_hide_hover.bind(false))
 
 	var pause_btn := get_node_or_null("UI/BattleHUD/PauseButton") as Button
 	if pause_btn != null:
@@ -143,6 +151,7 @@ func _ready() -> void:
 	_deck = Deck.new(starter)
 	_draw_to_hand_size()
 	_update_pile_info()
+	_apply_enemy_data()
 	_apply_equipment()
 	_setup_move_placeholder()
 	_begin_plan()
@@ -179,6 +188,9 @@ func _begin_plan() -> void:
 	_refresh_lock_in()
 	_update_facing()
 	_update_sharing()
+	# Enemy commits its plan at the start of PLAN so the player can react to it.
+	_enemy_plan = _enemy_decide()
+	_show_enemy_intent()
 	# Refresh block: expire last round's block then re-grant from all equipped items.
 	if _player != null:
 		_player.block = 0
@@ -197,10 +209,6 @@ func _set_planning_ui_visible(on: bool) -> void:
 			n.visible = on
 	if _move_placeholder != null:
 		_move_placeholder.visible = on
-	if on:
-		var hide_btn := get_node_or_null("UI/HideButton") as Button
-		if hide_btn != null:
-			hide_btn.icon = _ICON_HIDE
 
 
 ## A card was dropped onto slot `index`.
@@ -244,6 +252,7 @@ func _on_slot_dropped(index: int, payload: Dictionary) -> void:
 	card.pivot_offset = Vector2.ZERO
 	card.size         = CARD_SIZE
 	card.mouse_filter = Control.MOUSE_FILTER_IGNORE  # let clicks reach the slot (to clear)
+	card.move_to_front()
 	slot.show_placeholder(false)
 	_plan[index] = {"data": data, "consumable": consumable, "card": card}
 	_refresh_lock_in()
@@ -369,24 +378,27 @@ func _update_slot_states() -> void:
 		var filled: bool = _plan[i] != null
 		var is_next: bool = (i == next_free)
 		slot.set_droppable(is_next)
-		slot.modulate = Color.WHITE if (filled or is_next) else Color(1, 1, 1, 0.4)
 
 
-const _ICON_HIDE   := preload("res://assets/ui/icon_hide.png")
-const _ICON_SHOW   := preload("res://assets/ui/icon_show.png")
 const _ICON_PAUSE  := preload("res://assets/ui/icon_pause.png")
 const _ICON_RESUME := preload("res://assets/ui/icon_resume.png")
+
+func _on_hide_hover(is_hovered: bool) -> void:
+	var mat := _hide_btn.material as ShaderMaterial
+	if mat:
+		mat.set_shader_parameter("hovered", is_hovered)
+
 
 func _on_toggle_hide() -> void:
 	var plan_bar := get_node_or_null("UI/PlanBar") as CanvasItem
 	var show := not (plan_bar != null and plan_bar.visible)
 	if plan_bar != null:
 		plan_bar.visible = show
-	if _move_placeholder != null:
-		_move_placeholder.visible = show
-	var btn := get_node_or_null("UI/HideButton") as Button
-	if btn != null:
-		btn.icon = _ICON_HIDE if show else _ICON_SHOW
+	if _hide_btn != null:
+		var mat := _hide_btn.material as ShaderMaterial
+		if mat:
+			mat.set_shader_parameter("active", not show)
+			mat.set_shader_parameter("hovered", false)
 
 
 ## Pause / resume. The PauseButton + overlay run with PROCESS_MODE_ALWAYS so they
@@ -405,7 +417,6 @@ func _on_pause_toggle() -> void:
 func _on_bag_pressed() -> void:
 	if _card_viewer != null:
 		_card_viewer.show_cards("Bag — All Cards", _all_cards)
-
 
 func _on_discard_panel_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
@@ -433,57 +444,106 @@ func _show_toast(msg: String) -> void:
 		toast.visible = false
 
 
+# ── Enemy data ────────────────────────────────────────────────────────────────
+
+func _apply_enemy_data() -> void:
+	var node_type := MapNode.Type.FIGHT
+	if GameState.current_node_id >= 0 and GameState.has_map():
+		node_type = GameState.map_nodes[GameState.current_node_id].type
+
+	var ed := EnemyData.by_node_type(node_type)
+	if ed == null:
+		ed = EnemyData.new()   # safe fallback with defaults
+
+	_ai                 = EnemyData.create_ai(ed.ai_type)
+	_enemy_attack_card  = CardData.by_id(ed.attack_id)
+	_enemy_recover_card = CardData.by_id(ed.recover_id)
+
+	if _enemy != null:
+		_enemy.display_name  = ed.enemy_name
+		_enemy.max_hp        = ed.max_hp
+		_enemy.hp            = ed.max_hp
+		_enemy.max_energy    = ed.max_energy
+		_enemy.energy        = ed.start_energy
+		_enemy.energy_regen  = ed.energy_regen
+
+
 # ── Enemy AI ──────────────────────────────────────────────────────────────────
-## Pick up to 3 actions for the enemy, blind (based on the start-of-turn state).
-## Strategy: if the player is in the cell in front, attack; otherwise step toward
-## the player. If an attack is wanted but unaffordable, Focus to recharge.
+
 func _enemy_decide() -> Array:
-	var plan: Array = []
-	if _enemy == null or _player == null:
-		return plan
-	var slash: CardData = CardData.by_id(&"slash")
-	var focus: CardData = CardData.by_id(&"focus")
-	var facing := _enemy.get_facing()
-	var sim_cell := _enemy.current_cell
-	var sim_energy := _enemy.energy
-	for _i in range(MAX_SLOTS):
-		if sim_cell + facing == _player.current_cell:
-			if sim_energy >= slash.cost:
-				plan.append(slash)
-				sim_energy -= slash.cost
-			else:
-				plan.append(focus)
-				sim_energy += focus.energy_gain
+	return _ai.decide(_enemy, _player, _moves_by_dir,
+			_enemy_attack_card, _enemy_recover_card)
+
+
+# ── Enemy intent display ──────────────────────────────────────────────────────
+
+func _show_enemy_intent() -> void:
+	var ui := get_node_or_null("UI") as CanvasLayer
+	if ui == null:
+		return
+	_clear_enemy_intent()
+
+	var header := Label.new()
+	header.text = "Enemy intent:"
+	header.add_theme_font_size_override("font_size", 13)
+	header.modulate = Color(0.85, 0.50, 0.50)
+	header.position = Vector2(1560.0, 66.0)
+	ui.add_child(header)
+	_intent_displays.append(header)
+
+	for i in _enemy_plan.size():
+		var cd: CardData = _enemy_plan[i]
+		var chip := Panel.new()
+		chip.size = Vector2(110.0, 36.0)
+		chip.position = Vector2(1560.0 + i * 118.0, 86.0)
+
+		var style := StyleBoxFlat.new()
+		style.corner_radius_top_left     = 6
+		style.corner_radius_top_right    = 6
+		style.corner_radius_bottom_left  = 6
+		style.corner_radius_bottom_right = 6
+		style.set_border_width_all(1)
+
+		var lbl := Label.new()
+		lbl.set_anchors_preset(Control.PRESET_FULL_RECT)
+		lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		lbl.vertical_alignment   = VERTICAL_ALIGNMENT_CENTER
+		lbl.add_theme_font_size_override("font_size", 13)
+		lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+
+		if cd == null:
+			style.bg_color     = Color(0.12, 0.12, 0.12)
+			style.border_color = Color(0.28, 0.28, 0.28)
+			lbl.text = "—"
+		elif cd.type == CardData.CardType.MOVE:
+			style.bg_color     = Color(0.06, 0.20, 0.09)
+			style.border_color = Color(0.22, 0.68, 0.32)
+			lbl.modulate = Color(0.40, 1.0, 0.55)
+			var dir := cd.move_direction
+			var arrow := "→" if dir.x > 0 else "←" if dir.x < 0 else "↓" if dir.y > 0 else "↑"
+			lbl.text = "%s Move" % arrow
+		elif cd.type == CardData.CardType.ATTACK:
+			style.bg_color     = Color(0.22, 0.05, 0.05)
+			style.border_color = Color(0.80, 0.20, 0.20)
+			lbl.modulate = Color(1.0, 0.42, 0.42)
+			lbl.text = "⚔ %d dmg" % cd.damage
 		else:
-			var mv := _enemy_move_toward(sim_cell, _player.current_cell)
-			if mv != null:
-				plan.append(mv)
-				sim_cell += mv.move_direction
-			elif sim_energy >= slash.cost:
-				plan.append(slash)
-				sim_energy -= slash.cost
-			else:
-				plan.append(focus)
-				sim_energy += focus.energy_gain
-	return plan
+			style.bg_color     = Color(0.06, 0.10, 0.24)
+			style.border_color = Color(0.25, 0.52, 0.90)
+			lbl.modulate = Color(0.55, 0.75, 1.0)
+			lbl.text = "✦ +%d" % cd.energy_gain
+
+		chip.add_theme_stylebox_override("panel", style)
+		chip.add_child(lbl)
+		ui.add_child(chip)
+		_intent_displays.append(chip)
 
 
-## A move card that steps from `from` toward `to` (axis with the bigger gap),
-## or null if already aligned / blocked by the board edge.
-func _enemy_move_toward(from: Vector2i, to: Vector2i) -> CardData:
-	var dx := to.x - from.x
-	var dy := to.y - from.y
-	var dir := Vector2i.ZERO
-	if absi(dx) >= absi(dy) and dx != 0:
-		dir = Vector2i(signi(dx), 0)
-	elif dy != 0:
-		dir = Vector2i(0, signi(dy))
-	if dir == Vector2i.ZERO:
-		return null
-	var board := get_node_or_null("Board") as Board
-	if board != null and not board.in_bounds(from.x + dir.x, from.y + dir.y):
-		return null
-	return _moves_by_dir.get(dir)
+func _clear_enemy_intent() -> void:
+	for c in _intent_displays:
+		if is_instance_valid(c):
+			c.queue_free()
+	_intent_displays.clear()
 
 
 # ── RESOLVE phase ─────────────────────────────────────────────────────────────
@@ -521,9 +581,7 @@ func _resolve() -> void:
 		)
 
 	_set_planning_ui_visible(false)  # hide the card UI — watch the fight
-
-	# Enemy commits its 3 cards blind (it can't see the player's plan).
-	_enemy_plan = _enemy_decide()
+	_clear_enemy_intent()
 	_show_plan_displays()
 
 	for slot in range(MAX_SLOTS):
@@ -604,6 +662,7 @@ func _cleanup() -> void:
 
 
 func _game_over() -> void:
+	_clear_enemy_intent()
 	_clear_plan_displays()
 	_phase = Phase.RESOLVE
 	if _lock_in != null:
@@ -636,14 +695,26 @@ func _do_action(data: CardData, actor: Token) -> bool:
 		CardData.CardType.ATTACK:
 			if not actor.spend_energy(data.cost):
 				return false
-			var target := _token_at(actor.current_cell + actor.get_facing(), actor)
-			if target != null:
-				var dmg := data.damage
-				if actor == _player:
-					dmg += _player_damage_bonus
-					if _player_crit_chance > 0 and (randi() % 100) < _player_crit_chance:
-						dmg *= 2
-				target.take_damage(dmg)
+			var facing := actor.get_facing()
+			var dmg := data.damage
+			if actor == _player:
+				dmg += _player_damage_bonus
+				if _player_crit_chance > 0 and (randi() % 100) < _player_crit_chance:
+					dmg *= 2
+			# Use affected_cells for targeting; fall back to 1 cell ahead if empty.
+			var offsets: Array = data.affected_cells if not data.affected_cells.is_empty() \
+				else [Vector2i(1, 0)]
+			var already_hit: Array[Token] = []
+			for offset in offsets:
+				var actual := Vector2i(offset.x * facing.x, offset.y)
+				var target := _token_at(actor.current_cell + actual, actor)
+				if target != null and target not in already_hit:
+					target.take_damage(dmg)
+					already_hit.append(target)
+			# Apply facing-relative step if the card has one (e.g. back_shot).
+			if data.step_direction != Vector2i.ZERO:
+				var step := Vector2i(data.step_direction.x * facing.x, data.step_direction.y)
+				actor.move_to_cell(actor.current_cell + step)
 			return true
 		CardData.CardType.SKILL:
 			if not actor.spend_energy(data.cost):
@@ -694,10 +765,10 @@ func _update_pile_info() -> void:
 		return
 	var deck_label := get_node_or_null("UI/DeckPile/Label") as Label
 	if deck_label != null:
-		deck_label.text = "Deck\n%d" % _deck.draw_count()
+		deck_label.text = "%d" % _deck.draw_count()
 	var discard_label := get_node_or_null("UI/DiscardPile/Label") as Label
 	if discard_label != null:
-		discard_label.text = "Discard\n%d" % _deck.discard_count()
+		discard_label.text = "%d" % _deck.discard_count()
 
 
 # ── Plan display — card-back reveal during RESOLVE ────────────────────────────

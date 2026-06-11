@@ -1,0 +1,39 @@
+[gd_scene format=3 uid="uid://plan_card_scene"]
+
+[ext_resource type="Script" uid="uid://plan_card_script" path="res://scripts/battle/plan_card.gd" id="1_script"]
+[ext_resource type="Texture2D" uid="uid://cu6ie1rd34g2w" path="res://assets/cards/japan_warrior/japan_back.png" id="2_back"]
+
+[node name="PlanCard" type="Control"]
+custom_minimum_size = Vector2(100, 140)
+size = Vector2(100, 140)
+script = ExtResource("1_script")
+
+[node name="Back" type="Control" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="BackImage" type="TextureRect" parent="Back"]
+texture_filter = 2
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+texture = ExtResource("2_back")
+expand_mode = 1
+stretch_mode = 6
+
+[node name="Front" type="Control" parent="."]
+visible = false
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2

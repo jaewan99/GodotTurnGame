@@ -20,10 +20,6 @@ enum CardType {
 	MOVE,    ## moves the player's token on the grid
 }
 
-## All CardData instances use the game_card layout by default.
-func _init() -> void:
-	front_layout_name = LayoutID.GAME_CARD
-
 @export_group("Identity")
 @export var id: StringName = &""              ## unique key, e.g. &"inuyasha_slash"
 @export var card_name: String = "New Card"    ## shown to the player
@@ -44,6 +40,11 @@ var level: int = 0
 ## For MOVE cards: how far/which way to move on the grid.
 ## x = columns (右+/左-), y = rows (下+/上-). e.g. Down = (0, 1), Up = (0, -1).
 @export var move_direction: Vector2i = Vector2i.ZERO
+
+## Optional movement applied when this card is played, relative to the actor's facing.
+## x: -1=backward  +1=forward   y: -1=up  +1=down
+## Works on any card type (ATTACK, SKILL, …). Zero = no step.
+@export var step_direction: Vector2i = Vector2i.ZERO
 
 ## Which cells this card affects, relative to the player at (0,0).
 ## x: -1=left  0=center  +1=right
@@ -112,6 +113,8 @@ static func _from_dict(d: Dictionary) -> CardData:
 	cd.energy_gain   = d.get("energy_gain", 0)
 	var dir          = d.get("move_direction", [0, 0])
 	cd.move_direction = Vector2i(dir[0], dir[1])
+	var step          = d.get("step", [0, 0])
+	cd.step_direction = Vector2i(step[0], step[1])
 	cd.in_reward_pool = d.get("reward", false)
 	cd.starter_count  = d.get("starter", 0)
 	var art_path: String = d.get("art", "")

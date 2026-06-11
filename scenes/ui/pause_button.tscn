@@ -1,0 +1,11 @@
+[gd_scene format=3 uid="uid://ch33oopbepuaj"]
+
+[ext_resource type="Script" uid="uid://game_button_script" path="res://scripts/ui/game_button.gd" id="1_script"]
+[ext_resource type="Texture2D" uid="uid://bbgv6piybdh0j" path="res://assets/ui/icon_pause.png" id="2_pause"]
+
+[node name="PauseButton" type="Button" unique_id=703302071]
+process_mode = 3
+texture_filter = 2
+custom_minimum_size = Vector2(52, 52)
+script = ExtResource("1_script")
+icon = ExtResource("2_pause")

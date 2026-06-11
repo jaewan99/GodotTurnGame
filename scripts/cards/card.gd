@@ -26,9 +26,9 @@ var data: CardData:
 		if is_node_ready():
 			_refresh()
 
-@onready var _name_label: Label        = $NameLabel
-@onready var _cost_label: Label        = $CostLabel
-@onready var _description_label: Label = $DescriptionLabel
+@onready var _name_label: Label        = $NameIcon/NameLabel
+@onready var _cost_label: Label        = $EnergyIcon/CostLabel
+@onready var _description_label: Label = $DescIcon/DescriptionLabel
 @onready var _art: TextureRect         = $Art
 @onready var _shine: ColorRect         = $Shine
 

@@ -5,7 +5,7 @@ extends Node
 
 const MAX_FLOORS := 3
 
-var coins: int = 0
+var coins: int = 1
 var floor: int = 1
 var deck: Array[CardData] = []
 var map_nodes: Array[MapNode] = []
@@ -31,7 +31,7 @@ func has_deck() -> bool:
 
 
 func reset() -> void:
-	coins = 0
+	coins = 1
 	floor = 1
 	deck = []
 	map_nodes = []

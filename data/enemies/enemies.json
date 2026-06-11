@@ -1,0 +1,35 @@
+[
+  {
+	"id": "swordsman",
+	"enemy_name": "Swordsman",
+	"max_hp": 30,
+	"max_energy": 6,
+	"start_energy": 3,
+	"energy_regen": 2,
+	"ai_type": "aggressive",
+	"attack_id": "slash",
+	"recover_id": "focus"
+  },
+  {
+	"id": "bowman",
+	"enemy_name": "Bowman",
+	"max_hp": 20,
+	"max_energy": 5,
+	"start_energy": 3,
+	"energy_regen": 2,
+	"ai_type": "archer",
+	"attack_id": "back_shot",
+	"recover_id": "focus"
+  },
+  {
+	"id": "big_boss",
+	"enemy_name": "Big Boss",
+	"max_hp": 80,
+	"max_energy": 10,
+	"start_energy": 6,
+	"energy_regen": 3,
+	"ai_type": "boss",
+	"attack_id": "heavy_slash",
+	"recover_id": "focus"
+  }
+]

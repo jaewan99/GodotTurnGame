@@ -15,6 +15,18 @@ const FORGE_SUCCESS_RATES := [100, 80, 65, 50, 35, 20, 10]
 const FORGE_BASE_COST  := 50   # coins × (level + 1)
 const REMOVE_BASE_COST := 50   # coins × (cards_removed + 1)
 
+const SHOP_EQUIP_PRICES := {
+	0: 1,   # COMMON
+	1: 1,   # UNCOMMON
+	2: 1,   # RARE
+	3: 1,   # UNIQUE
+	4: 1,   # LEGENDARY
+	5: 1,   # MYSTERY
+}
+const SHOP_SCROLL_PRICE  := 1
+const SHOP_EQUIP_COUNT   := 3
+const SHOP_SCROLL_COUNT  := 3
+
 var _nodes: Array[MapNode] = []
 var _uis: Dictionary = {}   # node id -> MapNodeUI
 var _coins_label: Label = null
@@ -93,9 +105,9 @@ func _on_node_clicked(node: MapNode) -> void:
 			GameState.current_node_id = node.id
 			get_tree().change_scene_to_file(BATTLE_SCENE)
 		MapNode.Type.REST:
-			_show_toast("Rest — heal or upgrade (not yet implemented)")
+			_show_wizard_overlay()
 		MapNode.Type.SHOP:
-			_show_toast("Shop (not yet implemented)")
+			_show_shop_overlay()
 		MapNode.Type.EVENT:
 			_show_event_overlay()
 
@@ -1237,6 +1249,327 @@ func _build_scavenge_scroll_result(root: Control, overlay: CanvasLayer) -> void:
 	leave_btn.modulate = Color(0.65, 0.65, 0.65)
 	leave_btn.pressed.connect(func(): overlay.queue_free())
 	vbox.add_child(leave_btn)
+
+
+# ── Wizard overlay ────────────────────────────────────────────────────────────
+
+func _show_wizard_overlay() -> void:
+	var overlay := CanvasLayer.new()
+	overlay.layer = 10
+	add_child(overlay)
+
+	var bg := ColorRect.new()
+	bg.color = Color(0.0, 0.0, 0.0, 0.82)
+	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
+	overlay.add_child(bg)
+
+	var root := Control.new()
+	root.set_anchors_preset(Control.PRESET_FULL_RECT)
+	overlay.add_child(root)
+
+	_build_wizard_view(root, overlay)
+
+
+func _build_wizard_view(root: Control, overlay: CanvasLayer) -> void:
+	_clear_children(root)
+
+	var vbox := VBoxContainer.new()
+	vbox.set_anchors_preset(Control.PRESET_FULL_RECT)
+	vbox.offset_left   = 80.0
+	vbox.offset_right  = -80.0
+	vbox.offset_top    = 50.0
+	vbox.offset_bottom = -50.0
+	vbox.add_theme_constant_override("separation", 10)
+	root.add_child(vbox)
+
+	var title := Label.new()
+	title.text = "The Wizard"
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.add_theme_font_size_override("font_size", 48)
+	title.modulate = Color(0.45, 0.88, 0.95)
+	vbox.add_child(title)
+
+	var desc := Label.new()
+	desc.text = "\"I can erase one technique from your memory. Choose wisely.\""
+	desc.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	desc.add_theme_font_size_override("font_size", 18)
+	desc.modulate = Color(0.72, 0.72, 0.72)
+	vbox.add_child(desc)
+
+	vbox.add_child(HSeparator.new())
+
+	var safe_to_remove := GameState.deck.size() > 1
+
+	if not safe_to_remove:
+		var warn := Label.new()
+		warn.text = "Your deck only has one card — nothing to remove."
+		warn.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		warn.add_theme_font_size_override("font_size", 17)
+		warn.modulate = Color(1.0, 0.6, 0.2)
+		vbox.add_child(warn)
+	else:
+		var hint := Label.new()
+		hint.text = "Choose a card to remove from your deck (free):"
+		hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		hint.add_theme_font_size_override("font_size", 16)
+		hint.modulate = Color(0.65, 0.65, 0.65)
+		vbox.add_child(hint)
+
+	var scroll := ScrollContainer.new()
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	vbox.add_child(scroll)
+
+	var grid := VBoxContainer.new()
+	grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	grid.add_theme_constant_override("separation", 6)
+	scroll.add_child(grid)
+
+	for card in GameState.deck:
+		var btn := Button.new()
+		btn.text = "%-18s  Dmg: %2d  Lv.%d" % [card.card_name, card.damage, card.level]
+		btn.add_theme_font_size_override("font_size", 16)
+		btn.custom_minimum_size = Vector2(0, 44)
+		btn.disabled = not safe_to_remove
+		if not safe_to_remove:
+			btn.modulate = Color(0.5, 0.5, 0.5)
+
+		var captured_card := card
+		btn.pressed.connect(func():
+			GameState.deck.erase(captured_card)
+			_build_wizard_done(captured_card.card_name, root, overlay)
+		)
+		grid.add_child(btn)
+
+	var leave_btn := Button.new()
+	leave_btn.text = "Decline"
+	leave_btn.add_theme_font_size_override("font_size", 17)
+	leave_btn.modulate = Color(0.65, 0.65, 0.65)
+	leave_btn.pressed.connect(func(): overlay.queue_free())
+	vbox.add_child(leave_btn)
+
+
+func _build_wizard_done(card_name: String, root: Control, overlay: CanvasLayer) -> void:
+	_clear_children(root)
+
+	var vbox := VBoxContainer.new()
+	vbox.set_anchors_preset(Control.PRESET_CENTER)
+	vbox.offset_left   = -360.0
+	vbox.offset_right  =  360.0
+	vbox.offset_top    = -160.0
+	vbox.offset_bottom =  160.0
+	vbox.alignment = BoxContainer.ALIGNMENT_CENTER
+	vbox.add_theme_constant_override("separation", 22)
+	root.add_child(vbox)
+
+	var result := Label.new()
+	result.text = "Forgotten."
+	result.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	result.add_theme_font_size_override("font_size", 48)
+	result.modulate = Color(0.45, 0.88, 0.95)
+	vbox.add_child(result)
+
+	var detail := Label.new()
+	detail.text = "%s has been removed from your deck." % card_name
+	detail.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	detail.add_theme_font_size_override("font_size", 20)
+	detail.modulate = Color(0.75, 0.75, 0.75)
+	vbox.add_child(detail)
+
+	var ok_btn := Button.new()
+	ok_btn.text = "Continue"
+	ok_btn.add_theme_font_size_override("font_size", 20)
+	ok_btn.custom_minimum_size = Vector2(160, 0)
+	ok_btn.pressed.connect(func(): overlay.queue_free())
+	vbox.add_child(ok_btn)
+
+
+# ── Shop overlay ──────────────────────────────────────────────────────────────
+
+func _show_shop_overlay() -> void:
+	var overlay := CanvasLayer.new()
+	overlay.layer = 10
+	add_child(overlay)
+
+	var bg := ColorRect.new()
+	bg.color = Color(0.0, 0.0, 0.0, 0.85)
+	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
+	overlay.add_child(bg)
+
+	var root := Control.new()
+	root.set_anchors_preset(Control.PRESET_FULL_RECT)
+	overlay.add_child(root)
+
+	var equip_pool: Array = EquipmentData.all().duplicate()
+	equip_pool.shuffle()
+	var stock_equip: Array[EquipmentData] = []
+	for i in mini(SHOP_EQUIP_COUNT, equip_pool.size()):
+		stock_equip.append((equip_pool[i] as EquipmentData).duplicate())
+
+	var scroll_pool: Array = ScrollData.all().duplicate()
+	scroll_pool.shuffle()
+	var stock_scrolls: Array = []
+	for i in mini(SHOP_SCROLL_COUNT, scroll_pool.size()):
+		stock_scrolls.append((scroll_pool[i] as ScrollData).duplicate())
+
+	_build_shop_view(stock_equip, stock_scrolls, root, overlay)
+
+
+func _build_shop_view(stock_equip: Array[EquipmentData], stock_scrolls: Array,
+		root: Control, overlay: CanvasLayer) -> void:
+	_clear_children(root)
+
+	var panel := Panel.new()
+	panel.set_anchors_preset(Control.PRESET_CENTER)
+	panel.offset_left   = -500.0
+	panel.offset_right  =  500.0
+	panel.offset_top    = -380.0
+	panel.offset_bottom =  380.0
+	root.add_child(panel)
+
+	var outer := VBoxContainer.new()
+	outer.set_anchors_preset(Control.PRESET_FULL_RECT)
+	outer.offset_left = 18; outer.offset_right  = -18
+	outer.offset_top  = 14; outer.offset_bottom = -14
+	outer.add_theme_constant_override("separation", 8)
+	panel.add_child(outer)
+
+	# Header
+	var hdr := HBoxContainer.new()
+	outer.add_child(hdr)
+
+	var title_lbl := Label.new()
+	title_lbl.text = "SHOP"
+	title_lbl.add_theme_font_size_override("font_size", 30)
+	title_lbl.modulate = Color(1.0, 0.88, 0.30)
+	title_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	hdr.add_child(title_lbl)
+
+	var shop_coins_lbl := Label.new()
+	shop_coins_lbl.add_theme_font_size_override("font_size", 20)
+	shop_coins_lbl.modulate = Color(1.0, 0.85, 0.1)
+	shop_coins_lbl.text = "Coins: %d" % GameState.coins
+	hdr.add_child(shop_coins_lbl)
+
+	outer.add_child(HSeparator.new())
+
+	# Equipment section
+	var slot_names := {0: "Weapon", 1: "Offhand", 2: "Chest", 3: "Helm", 4: "Shoes"}
+
+	outer.add_child(_inv_section_label("EQUIPMENT"))
+
+	if stock_equip.is_empty():
+		var sold_lbl := Label.new()
+		sold_lbl.text = "Sold out!"
+		sold_lbl.modulate = Color(0.5, 0.5, 0.5)
+		sold_lbl.add_theme_font_size_override("font_size", 14)
+		outer.add_child(sold_lbl)
+	else:
+		for ed in stock_equip:
+			var price: int = SHOP_EQUIP_PRICES.get(ed.rarity, 1)
+			var can_afford := GameState.coins >= price
+
+			var row := HBoxContainer.new()
+			row.add_theme_constant_override("separation", 10)
+			outer.add_child(row)
+
+			var info := Label.new()
+			info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			info.add_theme_font_size_override("font_size", 15)
+			info.text = "[%s]  %s  [%s]  %s" % [
+				slot_names.get(ed.slot, "?"),
+				ed.equipment_name,
+				EquipmentData.rarity_name(ed.rarity),
+				_equipment_stat_summary(ed),
+			]
+			var base_col := EquipmentData.rarity_color(ed.rarity)
+			info.modulate = base_col if can_afford else base_col * Color(0.50, 0.50, 0.50, 1.0)
+			row.add_child(info)
+
+			var price_lbl := Label.new()
+			price_lbl.text = "%dg" % price
+			price_lbl.add_theme_font_size_override("font_size", 14)
+			price_lbl.modulate = Color(1.0, 0.85, 0.1) if can_afford else Color(0.45, 0.45, 0.45)
+			price_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+			row.add_child(price_lbl)
+
+			var buy_btn := Button.new()
+			buy_btn.text = "Buy"
+			buy_btn.add_theme_font_size_override("font_size", 14)
+			buy_btn.disabled = not can_afford
+			var cap_ed: EquipmentData = ed
+			var cap_price: int = price
+			buy_btn.pressed.connect(func():
+				GameState.coins -= cap_price
+				GameState.inventory.append(cap_ed)
+				stock_equip.erase(cap_ed)
+				_refresh_coins_label()
+				_build_shop_view(stock_equip, stock_scrolls, root, overlay)
+			)
+			row.add_child(buy_btn)
+
+	outer.add_child(HSeparator.new())
+
+	# Scrolls section
+	outer.add_child(_inv_section_label("SCROLLS"))
+
+	if stock_scrolls.is_empty():
+		var sold_lbl := Label.new()
+		sold_lbl.text = "Sold out!"
+		sold_lbl.modulate = Color(0.5, 0.5, 0.5)
+		sold_lbl.add_theme_font_size_override("font_size", 14)
+		outer.add_child(sold_lbl)
+	else:
+		for scroll in stock_scrolls:
+			var sd := scroll as ScrollData
+			var can_afford := GameState.coins >= SHOP_SCROLL_PRICE
+
+			var row := HBoxContainer.new()
+			row.add_theme_constant_override("separation", 10)
+			outer.add_child(row)
+
+			var info := Label.new()
+			info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			info.add_theme_font_size_override("font_size", 15)
+			info.text = "%s  +%d %s  |  %d%% success / %d%% destroy on fail" % [
+				sd.scroll_name,
+				sd.boost_amount,
+				sd.stat_label(),
+				sd.success_chance,
+				sd.destroy_chance,
+			]
+			var base_col := sd.stat_color()
+			info.modulate = base_col if can_afford else base_col * Color(0.50, 0.50, 0.50, 1.0)
+			row.add_child(info)
+
+			var price_lbl := Label.new()
+			price_lbl.text = "%dg" % SHOP_SCROLL_PRICE
+			price_lbl.add_theme_font_size_override("font_size", 14)
+			price_lbl.modulate = Color(1.0, 0.85, 0.1) if can_afford else Color(0.45, 0.45, 0.45)
+			price_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+			row.add_child(price_lbl)
+
+			var buy_btn := Button.new()
+			buy_btn.text = "Buy"
+			buy_btn.add_theme_font_size_override("font_size", 14)
+			buy_btn.disabled = not can_afford
+			var cap_sd: ScrollData = sd
+			buy_btn.pressed.connect(func():
+				GameState.coins -= SHOP_SCROLL_PRICE
+				GameState.scrolls.append(cap_sd)
+				stock_scrolls.erase(cap_sd)
+				_refresh_coins_label()
+				_build_shop_view(stock_equip, stock_scrolls, root, overlay)
+			)
+			row.add_child(buy_btn)
+
+	outer.add_child(HSeparator.new())
+
+	var leave_btn := Button.new()
+	leave_btn.text = "Leave Shop"
+	leave_btn.add_theme_font_size_override("font_size", 18)
+	leave_btn.custom_minimum_size = Vector2(0, 44)
+	leave_btn.pressed.connect(func(): overlay.queue_free())
+	outer.add_child(leave_btn)
 
 
 # ── Shared helpers ────────────────────────────────────────────────────────────

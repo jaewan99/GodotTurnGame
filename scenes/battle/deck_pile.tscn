@@ -1,0 +1,26 @@
+[gd_scene format=3 uid="uid://8ma7qc46ujts"]
+
+[ext_resource type="Texture2D" uid="uid://d2w6e7lwyjrp7" path="res://assets/ui/icon_deck.png" id="1_deck"]
+
+[node name="DeckPile" type="Panel" unique_id=1216418759]
+custom_minimum_size = Vector2(110, 130)
+
+[node name="Icon" type="TextureRect" parent="." unique_id=647478759]
+texture_filter = 2
+layout_mode = 0
+offset_left = 8.0
+offset_top = 8.0
+offset_right = 56.0
+offset_bottom = 56.0
+mouse_filter = 2
+texture = ExtResource("1_deck")
+expand_mode = 1
+stretch_mode = 6
+
+[node name="Label" type="Label" parent="." unique_id=1459475374]
+layout_mode = 0
+anchor_right = 1.0
+anchor_bottom = 1.0
+text = "0"
+horizontal_alignment = 1
+vertical_alignment = 1

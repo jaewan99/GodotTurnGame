@@ -52,6 +52,6 @@ void fragment() {
 		COLOR = tex + vec4(glow_color.rgb * total,
 		                   (outer * 0.6 + inner * 0.3 + edge * 0.5) * pulse);
 	} else {
-		COLOR = tex;
+		COLOR = vec4(tex.rgb * 0.35, tex.a);
 	}
 }

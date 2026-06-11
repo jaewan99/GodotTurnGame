@@ -6,14 +6,13 @@
 [ext_resource type="PackedScene" path="res://scenes/battle/hand.tscn" id="4_hand"]
 [ext_resource type="PackedScene" path="res://scenes/ui/combatant_hud.tscn" id="5_hud"]
 [ext_resource type="PackedScene" path="res://scenes/ui/card_viewer.tscn" id="6_viewer"]
-[ext_resource type="PackedScene" path="res://scenes/battle/deck_pile.tscn" id="7_deck"]
-[ext_resource type="PackedScene" path="res://scenes/battle/discard_pile.tscn" id="8_discard"]
+[ext_resource type="PackedScene" uid="uid://8ma7qc46ujts" path="res://scenes/battle/deck_pile.tscn" id="7_deck"]
+[ext_resource type="PackedScene" uid="uid://ch2fmqm6dc3sb" path="res://scenes/battle/discard_pile.tscn" id="8_discard"]
 [ext_resource type="PackedScene" path="res://scenes/battle/plan_bar.tscn" id="9_planbar"]
-[ext_resource type="PackedScene" path="res://scenes/battle/battle_hud.tscn" id="10_hud"]
+[ext_resource type="PackedScene" uid="uid://5clqinvc25co" path="res://scenes/battle/battle_hud.tscn" id="10_hud"]
 [ext_resource type="PackedScene" path="res://scenes/ui/pause_overlay.tscn" id="11_overlay"]
-[ext_resource type="Script" uid="uid://co16sxum7835l" path="res://scripts/ui/game_button.gd" id="12_game_btn"]
-[ext_resource type="PackedScene" path="res://scenes/battle/lock_in_button.tscn" id="13_lockin"]
-[ext_resource type="Texture2D" uid="uid://dbtmn78ywx5mf" path="res://assets/ui/icon_hide.png" id="14_hide"]
+[ext_resource type="PackedScene" uid="uid://b16rd5u0f3lct" path="res://scenes/battle/lock_in_button.tscn" id="13_lockin"]
+[ext_resource type="PackedScene" uid="uid://ci6v1bcmhr30l" path="res://scenes/battle/hide_button.tscn" id="14_hidebtn"]
 
 [node name="Battlefield" type="Node2D" unique_id=521275716]
 script = ExtResource("2_field")
@@ -61,18 +60,18 @@ grow_horizontal = 0
 mirrored = true
 
 [node name="BattleHUD" parent="UI" unique_id=1581189920 instance=ExtResource("10_hud")]
-layout_mode = 3
+offset_right = 1083.0
+offset_bottom = 87.0
 
-[node name="Hand" parent="UI" unique_id=764282949 instance=ExtResource("4_hand")]
-layout_mode = 3
+[node name="PlanBar" parent="UI" unique_id=1778273698 instance=ExtResource("9_planbar")]
 
 [node name="DiscardPile" parent="UI" unique_id=610416569 instance=ExtResource("8_discard")]
 anchors_preset = 2
 anchor_top = 1.0
 anchor_bottom = 1.0
 offset_left = 20.0
-offset_top = -150.0
-offset_right = 130.0
+offset_top = -189.0
+offset_right = 231.0
 offset_bottom = -20.0
 grow_vertical = 0
 
@@ -89,29 +88,19 @@ offset_bottom = -20.0
 grow_horizontal = 0
 grow_vertical = 0
 
-[node name="PlanBar" parent="UI" unique_id=1778273698 instance=ExtResource("9_planbar")]
+[node name="Hand" parent="UI" unique_id=764282949 instance=ExtResource("4_hand")]
+layout_mode = 3
 
-[node name="LockInButton" parent="UI" unique_id=1518421853 instance=ExtResource("13_lockin")]
-anchors_preset = 6
-anchor_left = 1.0
-anchor_top = 0.5
+[node name="HideButton" parent="UI" unique_id=1841942561 instance=ExtResource("14_hidebtn")]
+anchors_preset = 15
 anchor_right = 1.0
-anchor_bottom = 0.5
-offset_left = -320.0
-offset_top = -140.0
-offset_right = -147.0011
-offset_bottom = 83.50037
-grow_horizontal = 0
+anchor_bottom = 1.0
+offset_left = 840.0
+offset_top = 250.0
+offset_right = -812.00073
+offset_bottom = -640.0008
+grow_horizontal = 2
 grow_vertical = 2
-
-[node name="HideButton" type="Button" parent="UI" unique_id=1841942561]
-texture_filter = 2
-offset_left = 930.0
-offset_top = 940.0
-offset_right = 990.0
-offset_bottom = 1000.0
-icon = ExtResource("14_hide")
-script = ExtResource("12_game_btn")
 
 [node name="Banner" type="Label" parent="UI" unique_id=276157750]
 visible = false
@@ -147,5 +136,19 @@ vertical_alignment = 1
 
 [node name="PauseOverlay" parent="UI" unique_id=620661136 instance=ExtResource("11_overlay")]
 
+[node name="LockInButton" parent="UI" unique_id=1518421853 instance=ExtResource("13_lockin")]
+anchors_preset = 6
+anchor_left = 1.0
+anchor_top = 0.5
+anchor_right = 1.0
+anchor_bottom = 0.5
+offset_left = -403.7622
+offset_top = -96.736176
+offset_right = -230.7633
+offset_bottom = 126.76416
+grow_horizontal = 0
+grow_vertical = 2
+
 [node name="CardViewer" parent="UI" unique_id=112233445 instance=ExtResource("6_viewer")]
+visible = false
 layout_mode = 3

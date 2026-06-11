@@ -19,9 +19,32 @@
 	"type": 0,
 	"damage": 10,
 	"affected_cells": [[1, 0]],
-	"art": "res://assets/cards/japan_warrior/portrait/slash1.png",
+	"art": "res://assets/cards/japan_warrior/portrait/heavy_slash.png",
 	"reward": true,
 	"starter": 2
+  },
+  {
+	"id": "ranged_shot",
+	"card_name": "Ranged Shot",
+	"description": "Fire an arrow. Hits 1–2 cells ahead. Deal 4.",
+	"cost": 2,
+	"type": 0,
+	"damage": 4,
+	"affected_cells": [[1, 0], [2, 0]],
+	"art": "res://assets/cards/japan_warrior/portrait/slash1.png",
+	"reward": false
+  },
+  {
+	"id": "back_shot",
+	"card_name": "Back Shot",
+	"description": "Fire an arrow at 1–2 cells ahead, then step back. Deal 4.",
+	"cost": 2,
+	"type": 0,
+	"damage": 4,
+	"affected_cells": [[1, 0], [2, 0]],
+	"step": [-1, 0],
+	"art": "res://assets/cards/japan_warrior/portrait/slash1.png",
+	"reward": false
   },
   {
 	"id": "focus",
@@ -31,8 +54,27 @@
 	"type": 1,
 	"energy_gain": 4,
 	"affected_cells": [[0, 0]],
+	"art": "res://assets/cards/japan_warrior/portrait/focus.png",
 	"reward": true,
 	"starter": 2
+  },
+  {
+	"id": "nuke",
+	"card_name": "Nuke",
+	"description": "Obliterate every cell on the battlefield. Deal 300.",
+	"cost": 1,
+	"type": 0,
+	"damage": 300,
+	"affected_cells": [
+	  [-4,-2],[-3,-2],[-2,-2],[-1,-2],[0,-2],[1,-2],[2,-2],[3,-2],[4,-2],
+	  [-4,-1],[-3,-1],[-2,-1],[-1,-1],[0,-1],[1,-1],[2,-1],[3,-1],[4,-1],
+	  [-4, 0],[-3, 0],[-2, 0],[-1, 0],[0, 0],[1, 0],[2, 0],[3, 0],[4, 0],
+	  [-4, 1],[-3, 1],[-2, 1],[-1, 1],[0, 1],[1, 1],[2, 1],[3, 1],[4, 1],
+	  [-4, 2],[-3, 2],[-2, 2],[-1, 2],[0, 2],[1, 2],[2, 2],[3, 2],[4, 2]
+	],
+	"art": "res://assets/cards/japan_warrior/portrait/slash1.png",
+	"reward": true,
+	"starter": 1
   },
   {
 	"id": "do_nothing",

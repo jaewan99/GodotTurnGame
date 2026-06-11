@@ -64,6 +64,7 @@ static func _from_dict(d: Dictionary) -> EquipmentData:
 	ed.max_hp_bonus    = d.get("max_hp_bonus", 0)
 	ed.max_energy_bonus = d.get("max_energy_bonus", 0)
 	ed.crit_chance     = d.get("crit_chance", 0)
+	ed.is_active       = d.get("isActive", false)
 	return ed
 
 @export var id: StringName = &""
@@ -78,3 +79,4 @@ static func _from_dict(d: Dictionary) -> EquipmentData:
 @export var max_hp_bonus: int = 0       # CHEST   — added to player max HP at battle start
 @export var max_energy_bonus: int = 0   # HELM    — added to player max energy at battle start
 @export var crit_chance: int = 0        # SHOES   — % chance to deal double damage (0–100)
+@export var is_active: bool = false

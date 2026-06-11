@@ -84,7 +84,7 @@ static func _color(type: MapNode.Type) -> Color:
 		MapNode.Type.FIGHT: return Color("c94040")
 		MapNode.Type.ELITE: return Color("7b1fa2")
 		MapNode.Type.SHOP:  return Color("c9a020")
-		MapNode.Type.REST:  return Color("1565c0")
+		MapNode.Type.REST:  return Color("2e7d82")
 		MapNode.Type.EVENT: return Color("6a1b9a")
 		MapNode.Type.BOSS:  return Color("b71c1c")
 	return Color.GRAY
@@ -96,7 +96,7 @@ static func _label(type: MapNode.Type) -> String:
 		MapNode.Type.FIGHT: return "Fight"
 		MapNode.Type.ELITE: return "Elite"
 		MapNode.Type.SHOP:  return "Shop"
-		MapNode.Type.REST:  return "Rest"
+		MapNode.Type.REST:  return "Wizard"
 		MapNode.Type.EVENT: return "Event"
 		MapNode.Type.BOSS:  return "BOSS"
 	return "?"
