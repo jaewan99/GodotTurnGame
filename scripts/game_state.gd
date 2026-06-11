@@ -21,6 +21,18 @@ var inventory: Array[EquipmentData] = []
 ## Scrolls collected during the run.
 var scrolls: Array = []   # Array[ScrollData] — untyped to avoid autoload parse-order issues
 
+# ── Battle modifiers (set by map nodes, consumed by battlefield) ──────────────
+## Permanent max-HP reduction for this run (cursed shrine).
+var max_hp_curse: int = 0
+## Overrides the enemy tier for the next battle (-1 = use node type).
+var battle_tier_override: int = -1
+## Bounty contract: win within this many rounds → coins ×3 (0 = no bounty).
+var bounty_rounds: int = 0
+## Coin reward multiplier for the next battle (secret elite etc.).
+var coin_mult: int = 1
+## Set after winning a Dojo battle; map shows the free-upgrade overlay.
+var dojo_reward_pending: bool = false
+
 
 func has_map() -> bool:
 	return map_nodes.size() > 0
@@ -40,3 +52,8 @@ func reset() -> void:
 	equipment = {}
 	inventory = []
 	scrolls   = []
+	max_hp_curse = 0
+	battle_tier_override = -1
+	bounty_rounds = 0
+	coin_mult = 1
+	dojo_reward_pending = false

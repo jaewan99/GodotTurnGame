@@ -44,7 +44,11 @@ func setup(map_node: MapNode) -> void:
 
 
 func refresh(reachable: bool) -> void:
-	if data.visited:
+	if data.visited and data.always_accessible:
+		# Visited but still open for re-entry (shop / enchant before used)
+		modulate = Color(0.60, 0.85, 1.0)
+		disabled  = false
+	elif data.visited:
 		modulate = Color(0.55, 1.0, 0.55)
 		disabled  = true
 	elif reachable:
@@ -86,7 +90,16 @@ static func _color(type: MapNode.Type) -> Color:
 		MapNode.Type.SHOP:  return Color("c9a020")
 		MapNode.Type.REST:  return Color("2e7d82")
 		MapNode.Type.EVENT: return Color("6a1b9a")
-		MapNode.Type.BOSS:  return Color("b71c1c")
+		MapNode.Type.BOSS:     return Color("b71c1c")
+		MapNode.Type.ENCHANT:  return Color("1565c0")
+		MapNode.Type.FORGE:    return Color("bf5f1f")
+		MapNode.Type.MYSTERY:  return Color("546e7a")
+		MapNode.Type.GAMBLE:   return Color("ad1457")
+		MapNode.Type.TREASURE: return Color("e6b422")
+		MapNode.Type.SHRINE:   return Color("4a148c")
+		MapNode.Type.DOJO:     return Color("33691e")
+		MapNode.Type.BOUNTY:   return Color("a0522d")
+		MapNode.Type.SECRET:   return Color("00897b")
 	return Color.GRAY
 
 
@@ -98,5 +111,14 @@ static func _label(type: MapNode.Type) -> String:
 		MapNode.Type.SHOP:  return "Shop"
 		MapNode.Type.REST:  return "Wizard"
 		MapNode.Type.EVENT: return "Event"
-		MapNode.Type.BOSS:  return "BOSS"
+		MapNode.Type.BOSS:     return "BOSS"
+		MapNode.Type.ENCHANT:  return "Enchant"
+		MapNode.Type.FORGE:    return "Forge"
+		MapNode.Type.MYSTERY:  return "?"
+		MapNode.Type.GAMBLE:   return "Gamble"
+		MapNode.Type.TREASURE: return "Chest"
+		MapNode.Type.SHRINE:   return "Shrine"
+		MapNode.Type.DOJO:     return "Dojo"
+		MapNode.Type.BOUNTY:   return "Bounty"
+		MapNode.Type.SECRET:   return "Secret"
 	return "?"

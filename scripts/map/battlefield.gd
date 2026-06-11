@@ -450,6 +450,9 @@ func _apply_enemy_data() -> void:
 	var node_type := MapNode.Type.FIGHT
 	if GameState.current_node_id >= 0 and GameState.has_map():
 		node_type = GameState.map_nodes[GameState.current_node_id].type
+	# Map nodes (mystery fight, ambush, dojo, bounty…) can force an enemy tier.
+	if GameState.battle_tier_override != -1:
+		node_type = GameState.battle_tier_override as MapNode.Type
 
 	var ed := EnemyData.by_node_type(node_type)
 	if ed == null:
@@ -893,11 +896,34 @@ func _show_win_reward() -> void:
 	var node_type := MapNode.Type.FIGHT
 	if GameState.current_node_id >= 0 and GameState.has_map():
 		node_type = GameState.map_nodes[GameState.current_node_id].type
+
+	# Dojo: no card/equipment reward — the prize is a free upgrade back on the map.
+	if node_type == MapNode.Type.DOJO:
+		GameState.coins += randi_range(15, 25)
+		GameState.dojo_reward_pending = true
+		GameState.battle_tier_override = -1
+		get_tree().change_scene_to_file(MAP_SCENE)
+		return
+
+	# Tier override also raises the reward tier (e.g. secret elite).
+	if GameState.battle_tier_override != -1:
+		node_type = GameState.battle_tier_override as MapNode.Type
+
 	var coins_earned: int
 	match node_type:
 		MapNode.Type.ELITE: coins_earned = randi_range(75, 100)
 		MapNode.Type.BOSS:  coins_earned = randi_range(150, 200)
 		_:                  coins_earned = randi_range(30, 50)
+
+	# Bounty contract: triple coins if the fight ended fast enough.
+	if GameState.bounty_rounds > 0 and _round <= GameState.bounty_rounds:
+		coins_earned *= 3
+	coins_earned *= GameState.coin_mult
+
+	# Consume one-shot battle modifiers.
+	GameState.battle_tier_override = -1
+	GameState.bounty_rounds = 0
+	GameState.coin_mult = 1
 
 	# Build reward choices: FIGHT → 3 cards, ELITE → 2 cards + 1 equip, BOSS → 1 card + 2 equip.
 	var card_count: int
@@ -1217,6 +1243,10 @@ func _on_equipment_chosen(ed: EquipmentData, coins_earned: int, overlay: CanvasL
 func _apply_equipment() -> void:
 	if _player == null:
 		return
+	# Cursed shrine penalty — reduces max HP for the whole run.
+	if GameState.max_hp_curse > 0:
+		_player.max_hp = maxi(5, _player.max_hp - GameState.max_hp_curse)
+		_player.hp = mini(_player.hp, _player.max_hp)
 	# Aggregate all stats from every equipped slot so scrolled cross-stat items work.
 	for item in GameState.equipment.values():
 		var ed := item as EquipmentData

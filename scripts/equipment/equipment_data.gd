@@ -25,6 +25,37 @@ static func rarity_name(r: int) -> String:
 		Rarity.MYSTERY:   return "???"
 	return "Common"
 
+const SLOT_NAMES := {0: "Weapon", 1: "Offhand", 2: "Chest", 3: "Helm", 4: "Shoes"}
+
+## One-line stat summary, e.g. "(+3 dmg)".
+static func stat_summary(ed: EquipmentData) -> String:
+	if ed.damage_bonus     > 0: return "(+%d dmg)"      % ed.damage_bonus
+	if ed.block_per_turn   > 0: return "(+%d blk/rnd)"  % ed.block_per_turn
+	if ed.max_hp_bonus     > 0: return "(+%d HP)"       % ed.max_hp_bonus
+	if ed.max_energy_bonus > 0: return "(+%d energy)"   % ed.max_energy_bonus
+	if ed.crit_chance      > 0: return "(+%d%% crit)"   % ed.crit_chance
+	return ""
+
+## " ✦+N" suffix for enchanted items, empty otherwise.
+static func enchant_tag(ed: EquipmentData) -> String:
+	return " ✦+%d" % ed.enchant_level if ed.enchant_level > 0 else ""
+
+## Multi-line hover tooltip with the full stat breakdown.
+static func tooltip(ed: EquipmentData) -> String:
+	var lines: Array[String] = []
+	lines.append(ed.equipment_name + enchant_tag(ed))
+	lines.append("Slot: %s  |  Rarity: %s" % [
+		SLOT_NAMES.get(ed.slot, "?"), rarity_name(ed.rarity)
+	])
+	lines.append("─────────────────────")
+	if ed.damage_bonus     != 0: lines.append("Damage Bonus:  +%d" % ed.damage_bonus)
+	if ed.block_per_turn   != 0: lines.append("Block/Round:   +%d" % ed.block_per_turn)
+	if ed.max_hp_bonus     != 0: lines.append("Max HP:        +%d" % ed.max_hp_bonus)
+	if ed.max_energy_bonus != 0: lines.append("Max Energy:    +%d" % ed.max_energy_bonus)
+	if ed.crit_chance      != 0: lines.append("Crit Chance:   +%d%%" % ed.crit_chance)
+	if ed.enchant_level    >  0: lines.append("Enchanted: ✦×%d" % ed.enchant_level)
+	return "\n".join(lines)
+
 static var _cache: Array = []
 
 static func all() -> Array:
@@ -80,3 +111,7 @@ static func _from_dict(d: Dictionary) -> EquipmentData:
 @export var max_energy_bonus: int = 0   # HELM    — added to player max energy at battle start
 @export var crit_chance: int = 0        # SHOES   — % chance to deal double damage (0–100)
 @export var is_active: bool = false
+
+## Tracks how many times this item was successfully enchanted at an Enchant node.
+## Scales enchant cost and success rate. Non-exported so templates stay at 0.
+var enchant_level: int = 0
