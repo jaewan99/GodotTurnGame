@@ -35,7 +35,9 @@ const SHOP_SCROLL_COUNT  := 3
 var _nodes: Array[MapNode] = []
 var _uis: Dictionary = {}   # node id -> MapNodeUI
 var _coins_label: Label = null
-var _reachable: Array[int] = []   # updated by _refresh(), used by _draw()
+var _reachable: Array[int] = []        # updated by _refresh(), used by _draw()
+var _reachable_from: Dictionary = {}   # reachable node id → id of the visited node that first revealed it
+var _current_node: MapNode = null      # node whose overlay is currently open
 ## Items selected for merging in the inventory overlay.
 var _merge_sel: Array = []
 
@@ -45,6 +47,10 @@ const PAN_SPEED := 0.55
 ## Breathing room (px) kept around the map edges when panned to a limit.
 ## Panning is only allowed as far as needed to reveal off-screen nodes.
 const PAN_PADDING := 80.0
+
+## Optional tiling background texture. Assign a parchment/map PNG in the editor.
+## If left empty, falls back to the solid colour below.
+@export var background_texture: Texture2D = null
 
 var _pan_offset: Vector2 = Vector2.ZERO
 var _pan_drag_origin: Vector2 = Vector2.ZERO
@@ -57,7 +63,7 @@ func _ready() -> void:
 	if GameState.has_map():
 		_nodes = GameState.map_nodes
 	else:
-		_nodes = MapGenerator.generate(GameState.floor)
+		_nodes = MapGenerator.generate(GameState.floor_num)
 		GameState.map_nodes = _nodes
 	_spawn_uis()
 	_compute_map_bounds()
@@ -146,53 +152,73 @@ func _clamp_pan() -> void:
 # ── Drawing ───────────────────────────────────────────────────────────────────
 
 func _draw() -> void:
-	for node in _nodes:
-		# Faint glint hint at an undiscovered secret node's position.
-		if node.type == MapNode.Type.SECRET and not node.secret_revealed and not node.visited:
-			var p := node.pos + _pan_offset
-			draw_circle(p, 7.0, Color(1.0, 0.95, 0.6, 0.10))
-			draw_circle(p, 2.5, Color(1.0, 0.95, 0.7, 0.30))
-			continue
+	# Background — drawn here so it sits behind lines but above nothing.
+	# (Control._draw runs before children, so a ColorRect child would cover lines.)
+	var vp_rect := Rect2(Vector2.ZERO, get_viewport_rect().size)
+	if background_texture != null:
+		draw_texture_rect(background_texture, vp_rect, true)
+	else:
+		draw_rect(vp_rect, Color(0.28, 0.20, 0.12))
 
-		var node_visible := node.visited or node.id in _reachable
-		if not node_visible:
+	# Secret node glint hints — commented out, secret nodes are now fully invisible until discovered.
+	#for node in _nodes:
+		#if node.type == MapNode.Type.SECRET and not node.secret_revealed and not node.visited:
+			#var p := node.pos + _pan_offset
+			#draw_circle(p, 7.0, Color(1.0, 0.95, 0.6, 0.10))
+			#draw_circle(p, 2.5, Color(1.0, 0.95, 0.7, 0.30))
+
+	# Solid lines between visited nodes (already traveled).
+	for node in _nodes:
+		if not node.visited:
 			continue
 		for cid in node.connections:
-			var other: MapNode = _nodes[cid]
-			var other_visible := other.visited or cid in _reachable
-
-			# Hidden neighbor: draw a stub fading into the fog so the player
-			# can tell this path continues. No stub = dead end.
-			if not other_visible:
-				if other.type == MapNode.Type.SECRET and not other.secret_revealed:
-					continue   # don't leak secret nodes
-				var from := node.pos + _pan_offset
-				var dir := (other.pos - node.pos).normalized()
-				# Three segments with decreasing alpha = "trails off" effect.
-				draw_line(from + dir * 34.0, from + dir * 70.0,
-						Color(0.75, 0.75, 0.75, 0.60), 2.5, true)
-				draw_line(from + dir * 70.0, from + dir * 100.0,
-						Color(0.70, 0.70, 0.70, 0.32), 2.5, true)
-				draw_line(from + dir * 100.0, from + dir * 124.0,
-						Color(0.65, 0.65, 0.65, 0.12), 2.5, true)
+			if cid <= node.id:
 				continue
+			if _nodes[cid].visited:
+				var a := node.pos + _pan_offset
+				var b := _nodes[cid].pos + _pan_offset
+				var d := (b - a).normalized()
+				var inset := MapNodeUI.RADIUS + 2.0
+				draw_line(a + d * inset, b - d * inset, Color(0.75, 0.75, 0.75, 0.85), 2.0, true)
 
-			if cid <= node.id:   # draw each full edge once
-				continue
-			var traveled := node.visited and other.visited
-			var col := Color(0.75, 0.75, 0.75, 0.85) if traveled \
-					else Color(0.40, 0.40, 0.40, 0.55)
-			draw_line(node.pos + _pan_offset, other.pos + _pan_offset, col, 2.0, true)
+	# Dotted lines only from the visited node that first revealed each reachable node.
+	# Endpoints are inset by node radius so lines stop at the icon edge, not the center.
+	for cid in _reachable:
+		if cid not in _reachable_from:
+			continue
+		var target   := _nodes[cid]
+		var revealer := _nodes[int(_reachable_from[cid])]
+		var from_pos := revealer.pos + _pan_offset
+		var to_pos   := target.pos   + _pan_offset
+		var dir      := (to_pos - from_pos).normalized()
+		var inset    := MapNodeUI.RADIUS + 2.0
+		_draw_dashed_line(from_pos + dir * inset, to_pos - dir * inset,
+				Color(0.50, 0.50, 0.50, 0.65))
+
+
+func _draw_dashed_line(from: Vector2, to: Vector2, color: Color,
+		dash: float = 6.0, gap: float = 5.0, width: float = 2.0) -> void:
+	var dir := to - from
+	var total := dir.length()
+	if total < 0.001:
+		return
+	dir /= total
+	var pos := 0.0
+	var drawing := true
+	while pos < total:
+		if drawing:
+			var seg_end := minf(pos + dash, total)
+			draw_line(from + dir * pos, from + dir * seg_end, color, width, true)
+			pos = seg_end
+		else:
+			pos += gap
+		drawing = not drawing
 
 
 # ── Internal ──────────────────────────────────────────────────────────────────
 
 func _add_background() -> void:
-	var bg := ColorRect.new()
-	bg.color = Color(0.07, 0.09, 0.07)
-	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
-	add_child(bg)
-	move_child(bg, 0)
+	pass  # background is drawn in _draw() so it doesn't cover the map lines
 
 
 func _spawn_uis() -> void:
@@ -206,12 +232,14 @@ func _spawn_uis() -> void:
 
 func _refresh() -> void:
 	_reachable.clear()
+	_reachable_from.clear()
 	for node in _nodes:
 		if not node.visited:
 			continue
 		for cid in node.connections:
-			if not _nodes[cid].visited and cid not in _reachable:
+			if not _nodes[cid].visited and cid not in _reachable_from:
 				_reachable.append(cid)
+				_reachable_from[cid] = node.id
 
 	for node in _nodes:
 		var ui := _uis[node.id] as MapNodeUI
@@ -226,8 +254,18 @@ func _refresh() -> void:
 		ui.refresh(node.id in _reachable)
 
 
+func _close_current_node() -> void:
+	if _current_node == null:
+		return
+	_current_node.always_accessible = false
+	_current_node = null
+	_refresh()
+	queue_redraw()
+
+
 func _on_node_clicked(node: MapNode) -> void:
 	node.visited = true
+	_current_node = node
 	_refresh()
 	queue_redraw()
 
@@ -579,6 +617,7 @@ func _build_remove_select(root: Control, overlay: CanvasLayer) -> void:
 			GameState.cards_removed += 1
 			GameState.deck.erase(captured_card)
 			_refresh_coins_label()
+			_close_current_node()
 			overlay.queue_free()
 		)
 		grid.add_child(btn)
@@ -707,7 +746,7 @@ func _build_scavenge_result(root: Control, overlay: CanvasLayer) -> void:
 		if old != null:
 			GameState.inventory.append(old)
 		GameState.equipment[ed.slot] = ed
-
+		_close_current_node()
 		overlay.queue_free()
 	)
 	vbox.add_child(take_btn)
@@ -717,6 +756,7 @@ func _build_scavenge_result(root: Control, overlay: CanvasLayer) -> void:
 	stash_btn.add_theme_font_size_override("font_size", 17)
 	stash_btn.pressed.connect(func():
 		GameState.inventory.append(ed)
+		_close_current_node()
 		overlay.queue_free()
 	)
 	vbox.add_child(stash_btn)
@@ -780,12 +820,12 @@ func _add_floor_indicator() -> void:
 		lbl.vertical_alignment   = VERTICAL_ALIGNMENT_CENTER
 		lbl.custom_minimum_size  = Vector2(100, 0)
 
-		if floor_num < GameState.floor:
+		if floor_num < GameState.floor_num:
 			style.bg_color     = Color(0.12, 0.28, 0.12)
 			style.border_color = Color(0.25, 0.55, 0.25)
 			lbl.text = "✓  Floor %d" % floor_num
 			lbl.add_theme_color_override("font_color", Color(0.50, 0.85, 0.50))
-		elif floor_num == GameState.floor:
+		elif floor_num == GameState.floor_num:
 			style.bg_color     = Color(0.38, 0.26, 0.03)
 			style.border_color = Color(0.95, 0.78, 0.15)
 			lbl.text = "★  Floor %d" % floor_num
@@ -824,7 +864,7 @@ func _do_merge(root: Control, overlay: CanvasLayer) -> void:
 		var pool: Array = EquipmentData.all().duplicate()
 		pool.shuffle()
 		new_item = (pool[0] as EquipmentData).duplicate()
-		new_item.rarity = src_rarity + 1
+		new_item.rarity = (src_rarity + 1) as EquipmentData.Rarity
 		GameState.inventory.append(new_item)
 
 	_build_merge_result(new_item, success, src_rarity, root, overlay)
@@ -1000,6 +1040,7 @@ func _build_scavenge_scroll_result(root: Control, overlay: CanvasLayer) -> void:
 	take_btn.custom_minimum_size = Vector2(160, 0)
 	take_btn.pressed.connect(func():
 		GameState.scrolls.append(sd)
+		_close_current_node()
 		overlay.queue_free()
 	)
 	vbox.add_child(take_btn)
@@ -1140,7 +1181,7 @@ func _build_wizard_done(card_name: String, root: Control, overlay: CanvasLayer) 
 	ok_btn.text = "Continue"
 	ok_btn.add_theme_font_size_override("font_size", 20)
 	ok_btn.custom_minimum_size = Vector2(160, 0)
-	ok_btn.pressed.connect(func(): overlay.queue_free())
+	ok_btn.pressed.connect(func(): _close_current_node(); overlay.queue_free())
 	vbox.add_child(ok_btn)
 
 
@@ -1957,30 +1998,30 @@ func _overlay_vbox(root: Control, half_h: float = 240.0) -> VBoxContainer:
 	return vbox
 
 
-func _overlay_title(vbox: VBoxContainer, text: String, color: Color, size: int = 42) -> void:
+func _overlay_title(vbox: VBoxContainer, text: String, color: Color, font_size: int = 42) -> void:
 	var lbl := Label.new()
 	lbl.text = text
 	lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	lbl.add_theme_font_size_override("font_size", size)
+	lbl.add_theme_font_size_override("font_size", font_size)
 	lbl.modulate = color
 	vbox.add_child(lbl)
 
 
-func _overlay_text(vbox: VBoxContainer, text: String, size: int = 18,
+func _overlay_text(vbox: VBoxContainer, text: String, font_size: int = 18,
 		color: Color = Color(0.78, 0.78, 0.78)) -> void:
 	var lbl := Label.new()
 	lbl.text = text
 	lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	lbl.add_theme_font_size_override("font_size", size)
+	lbl.add_theme_font_size_override("font_size", font_size)
 	lbl.modulate = color
 	vbox.add_child(lbl)
 
 
 func _overlay_button(vbox: VBoxContainer, text: String, on_press: Callable,
-		size: int = 20, dim: bool = false) -> Button:
+		font_size: int = 20, dim: bool = false) -> Button:
 	var btn := Button.new()
 	btn.text = text
-	btn.add_theme_font_size_override("font_size", size)
+	btn.add_theme_font_size_override("font_size", font_size)
 	btn.custom_minimum_size = Vector2(0, 48)
 	if dim:
 		btn.modulate = Color(0.65, 0.65, 0.65)
@@ -1997,7 +2038,7 @@ func _build_simple_result(title: String, title_col: Color, detail: String,
 	_overlay_title(vbox, title, title_col)
 	_overlay_text(vbox, detail, 20)
 	_overlay_text(vbox, "Coins: %d" % GameState.coins, 16, Color(1.0, 0.85, 0.1))
-	_overlay_button(vbox, "Continue", func(): overlay.queue_free())
+	_overlay_button(vbox, "Continue", func(): _close_current_node(); overlay.queue_free())
 
 
 ## "You found equipment" screen with Equip / Stash / Leave.
@@ -2014,10 +2055,12 @@ func _build_found_equipment(ed: EquipmentData, title: String,
 		if old != null:
 			GameState.inventory.append(old)
 		GameState.equipment[ed.slot] = ed
+		_close_current_node()
 		overlay.queue_free()
 	)
 	_overlay_button(vbox, "Add to inventory", func():
 		GameState.inventory.append(ed)
+		_close_current_node()
 		overlay.queue_free()
 	, 17)
 	_overlay_button(vbox, "Leave it", func(): overlay.queue_free(), 16, true)
@@ -2035,6 +2078,7 @@ func _build_found_scroll(sd: ScrollData, title: String,
 	], 17, Color(0.85, 0.85, 0.65))
 	_overlay_button(vbox, "Take it", func():
 		GameState.scrolls.append(sd)
+		_close_current_node()
 		overlay.queue_free()
 	)
 	_overlay_button(vbox, "Leave it", func(): overlay.queue_free(), 16, true)
@@ -2059,7 +2103,7 @@ func _show_mystery_overlay(node: MapNode) -> void:
 	# Mostly good, rare disaster.
 	var roll := randi() % 100
 	if roll < 25:
-		var coins := randi_range(40, 80) * GameState.floor
+		var coins := randi_range(40, 80) * GameState.floor_num
 		GameState.coins += coins
 		_refresh_coins_label()
 		_build_simple_result("A hidden cache!", Color(1.0, 0.85, 0.1),
@@ -2080,7 +2124,7 @@ func _show_mystery_overlay(node: MapNode) -> void:
 	elif roll < 90:
 		_build_ambush_intro("An enemy was waiting!", node, MapNode.Type.FIGHT, 1, root, overlay)
 	elif roll < 97:
-		var lost := GameState.coins / 4
+		var lost: int = GameState.coins / 4
 		GameState.coins -= lost
 		_refresh_coins_label()
 		_build_simple_result("A trap!", Color(1.0, 0.38, 0.28),
@@ -2098,6 +2142,7 @@ func _build_ambush_intro(title: String, node: MapNode, tier: int, mult: int,
 	if mult > 1:
 		_overlay_text(vbox, "Defeat it for ×%d coins!" % mult, 18, Color(1.0, 0.85, 0.1))
 	_overlay_button(vbox, "Fight!", func():
+		_close_current_node()
 		overlay.queue_free()
 		_go_battle(node, tier, 0, mult)
 	)
@@ -2119,7 +2164,7 @@ func _build_gamble_menu(root: Control, overlay: CanvasLayer) -> void:
 	_overlay_text(vbox, "\"Feeling lucky, traveler?\"")
 	_overlay_text(vbox, "Your coins: %d" % GameState.coins, 17, Color(1.0, 0.85, 0.1))
 
-	var stake := GameState.coins / 2
+	var stake: int = GameState.coins / 2
 	var flip_btn := _overlay_button(vbox,
 			"Coin Flip — wager %d coins, 50%% to double them" % stake, func():
 		if randi() % 2 == 0:
@@ -2161,7 +2206,7 @@ func _show_treasure_overlay() -> void:
 	if roll < 50:
 		_build_found_equipment(_roll_equipment(1), "You found a treasure chest!", root, overlay)
 	elif roll < 80:
-		var coins := randi_range(60, 100) * GameState.floor
+		var coins := randi_range(60, 100) * GameState.floor_num
 		GameState.coins += coins
 		_refresh_coins_label()
 		_build_simple_result("Treasure!", Color(1.0, 0.85, 0.1),
@@ -2210,6 +2255,7 @@ func _show_dojo_overlay(node: MapNode) -> void:
 	_overlay_title(vbox, "Training Dojo", Color(0.5, 0.9, 0.4), 46)
 	_overlay_text(vbox, "\"Defeat me, and I will perfect one of your techniques — free of charge.\"")
 	_overlay_button(vbox, "Accept the duel", func():
+		_close_current_node()
 		overlay.queue_free()
 		_go_battle(node, MapNode.Type.FIGHT)
 	)
@@ -2263,6 +2309,7 @@ func _show_bounty_overlay(node: MapNode) -> void:
 	_overlay_text(vbox, "WANTED: defeat the target within 3 rounds.")
 	_overlay_text(vbox, "Reward: coins ×3", 19, Color(1.0, 0.85, 0.1))
 	_overlay_button(vbox, "Take the contract", func():
+		_close_current_node()
 		overlay.queue_free()
 		_go_battle(node, MapNode.Type.FIGHT, 3)
 	)
@@ -2280,7 +2327,7 @@ func _show_secret_overlay(node: MapNode) -> void:
 	if roll < 30:
 		_build_found_equipment(_roll_equipment(2), "A hidden trove!", root, overlay)
 	elif roll < 55:
-		var coins := randi_range(100, 150) * GameState.floor
+		var coins := randi_range(100, 150) * GameState.floor_num
 		GameState.coins += coins
 		_refresh_coins_label()
 		_build_simple_result("A hidden trove!", Color(1.0, 0.85, 0.1),

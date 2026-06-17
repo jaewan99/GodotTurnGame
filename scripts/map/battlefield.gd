@@ -1215,7 +1215,7 @@ func _advance_floor_if_boss() -> void:
 	if GameState.current_node_id < 0 or not GameState.has_map():
 		return
 	if GameState.map_nodes[GameState.current_node_id].type == MapNode.Type.BOSS:
-		GameState.floor += 1
+		GameState.floor_num += 1
 		GameState.map_nodes = []
 
 

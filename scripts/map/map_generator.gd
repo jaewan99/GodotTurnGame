@@ -96,7 +96,7 @@ static func generate(floor_num: int = 1, rng_seed: int = 0) -> Array[MapNode]:
 			var angle := (TAU / count) * i + rng.randf_range(-0.2, 0.2)
 			var n := _node(nodes.size(), t,
 					center + Vector2(cos(angle), sin(angle)) * radius)
-			if t in [MapNode.Type.SHOP, MapNode.Type.ENCHANT, MapNode.Type.FORGE]:
+			if t not in [MapNode.Type.FIGHT, MapNode.Type.ELITE, MapNode.Type.BOSS]:
 				n.always_accessible = true
 			ids.append(n.id)
 			nodes.append(n)

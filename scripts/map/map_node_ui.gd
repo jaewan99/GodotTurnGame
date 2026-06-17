@@ -1,8 +1,8 @@
 ## MapNodeUI
-## A circular Button representing one node on the map.
+## An icon-only Button representing one node on the map.
 ## Three visual states driven by refresh():
 ##   visited   — green tint, disabled (already explored)
-##   reachable — full colour, clickable
+##   reachable — full white, clickable
 ##   locked    — dark/dim, disabled (not connected to any visited node)
 class_name MapNodeUI
 extends Button
@@ -22,13 +22,26 @@ func setup(map_node: MapNode) -> void:
 	pivot_offset        = sz / 2.0
 	position            = map_node.pos - sz / 2.0
 
-	text = _label(map_node.type)
-	add_theme_font_size_override("font_size", 10)
-	for state_name in ["font_color", "font_hover_color",
-			"font_pressed_color", "font_focus_color", "font_disabled_color"]:
-		add_theme_color_override(state_name, Color.WHITE)
+	_apply_flat_style()
 
-	_apply_round_style(_color(map_node.type))
+	var icon_path := _icon_path(map_node.type)
+	if ResourceLoader.exists(icon_path):
+		icon = load(icon_path)
+		icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		vertical_icon_alignment = VERTICAL_ALIGNMENT_CENTER
+		expand_icon = true
+		add_theme_constant_override("icon_max_width", int(RADIUS * 1.6))
+		add_theme_color_override("icon_normal_color",   Color.WHITE)
+		add_theme_color_override("icon_hover_color",    Color(0.55, 0.55, 0.55))
+		add_theme_color_override("icon_pressed_color",  Color(0.35, 0.35, 0.35))
+		add_theme_color_override("icon_disabled_color", Color(0.30, 0.30, 0.30))
+		text = ""
+	else:
+		text = _label(map_node.type)
+		add_theme_font_size_override("font_size", 10)
+		for state_name in ["font_color", "font_hover_color",
+				"font_pressed_color", "font_focus_color", "font_disabled_color"]:
+			add_theme_color_override(state_name, Color.WHITE)
 
 	pressed.connect(func(): node_clicked.emit(data))
 
@@ -38,7 +51,6 @@ func setup(map_node: MapNode) -> void:
 		size                = bigger
 		pivot_offset        = bigger / 2.0
 		position            = map_node.pos - bigger / 2.0
-		add_theme_font_size_override("font_size", 12)
 
 	refresh(false)
 
@@ -59,27 +71,10 @@ func refresh(reachable: bool) -> void:
 		disabled  = true
 
 
-func _apply_round_style(base: Color) -> void:
-	var r := int(RADIUS)
-	for pair in [
-		["normal",   base],
-		["hover",    base.lightened(0.25)],
-		["pressed",  base.darkened(0.25)],
-		["disabled", base.darkened(0.40)],
-		["focus",    base.lightened(0.15)],
-	]:
-		var s := StyleBoxFlat.new()
-		s.corner_radius_top_left     = r
-		s.corner_radius_top_right    = r
-		s.corner_radius_bottom_left  = r
-		s.corner_radius_bottom_right = r
-		s.bg_color       = pair[1] as Color
-		s.border_width_top    = 2
-		s.border_width_right  = 2
-		s.border_width_bottom = 2
-		s.border_width_left   = 2
-		s.border_color   = Color(1, 1, 1, 0.25)
-		add_theme_stylebox_override(pair[0], s)
+func _apply_flat_style() -> void:
+	var empty := StyleBoxEmpty.new()
+	for state in ["normal", "hover", "pressed", "disabled", "focus"]:
+		add_theme_stylebox_override(state, empty)
 
 
 static func _color(type: MapNode.Type) -> Color:
@@ -101,6 +96,28 @@ static func _color(type: MapNode.Type) -> Color:
 		MapNode.Type.BOUNTY:   return Color("a0522d")
 		MapNode.Type.SECRET:   return Color("00897b")
 	return Color.GRAY
+
+
+static func _icon_path(type: MapNode.Type) -> String:
+	const BASE := "res://assets/map/nodes/"
+	match type:
+		MapNode.Type.START:    return BASE + "start.png"
+		MapNode.Type.FIGHT:    return BASE + "fight.png"
+		MapNode.Type.ELITE:    return BASE + "elite.png"
+		MapNode.Type.SHOP:     return BASE + "shop.png"
+		MapNode.Type.REST:     return BASE + "rest.png"
+		MapNode.Type.EVENT:    return BASE + "event.png"
+		MapNode.Type.BOSS:     return BASE + "boss.png"
+		MapNode.Type.ENCHANT:  return BASE + "enchant.png"
+		MapNode.Type.FORGE:    return BASE + "forge.png"
+		MapNode.Type.MYSTERY:  return BASE + "mystery.png"
+		MapNode.Type.GAMBLE:   return BASE + "gamble.png"
+		MapNode.Type.TREASURE: return BASE + "treasure.png"
+		MapNode.Type.SHRINE:   return BASE + "shrine.png"
+		MapNode.Type.DOJO:     return BASE + "dojo.png"
+		MapNode.Type.BOUNTY:   return BASE + "bounty.png"
+		MapNode.Type.SECRET:   return BASE + "secret.png"
+	return ""
 
 
 static func _label(type: MapNode.Type) -> String:
