@@ -43,5 +43,13 @@
 	"rarity": 0,
 	"crit_chance": 15,
 	"isActive": false
+  },
+  {
+	"id": "key",
+	"equipment_name": "Key",
+	"description": "A worn brass key. It cannot be equipped — surely it opens something…",
+	"slot": 5,
+	"rarity": 5,
+	"isActive": false
   }
 ]

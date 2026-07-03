@@ -934,7 +934,7 @@ func _show_win_reward() -> void:
 		_:                  card_count = 3; equip_count = 0
 	var card_pool: Array = CardData.reward_pool().duplicate()
 	card_pool.shuffle()
-	var equip_pool: Array = EquipmentData.all().duplicate()
+	var equip_pool: Array = EquipmentData.loot_pool()
 	equip_pool.shuffle()
 	var choices: Array = []
 	for i in mini(card_count, card_pool.size()):

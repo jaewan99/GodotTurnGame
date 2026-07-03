@@ -680,19 +680,20 @@ func _build_scavenge_result(root: Control, overlay: CanvasLayer) -> void:
 	root.add_child(vbox)
 
 	var title := Label.new()
-	title.text = "You found equipment!"
+	title.text = "You found equipment!" if EquipmentData.is_equippable(ed) else "You found an item!"
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	title.add_theme_font_size_override("font_size", 36)
 	title.modulate = Color(0.9, 0.75, 0.2)
 	vbox.add_child(title)
 
-	var slot_labels := {0: "Weapon", 1: "Offhand", 2: "Chest", 3: "Helm", 4: "Shoes"}
+	var slot_labels := {0: "Weapon", 1: "Offhand", 2: "Chest", 3: "Helm", 4: "Shoes", 5: "Item"}
 	var slot_colors := {
 		0: Color(0.90, 0.50, 0.20),
 		1: Color(0.25, 0.56, 0.88),
 		2: Color(0.25, 0.75, 0.45),
 		3: Color(0.65, 0.25, 0.88),
 		4: Color(0.20, 0.80, 0.85),
+		5: Color(0.85, 0.75, 0.35),
 	}
 	var slot_color: Color = slot_colors.get(ed.slot, Color(0.7, 0.7, 0.7))
 	var rarity_col := EquipmentData.rarity_color(ed.rarity)
@@ -742,24 +743,28 @@ func _build_scavenge_result(root: Control, overlay: CanvasLayer) -> void:
 	take_btn.add_theme_font_size_override("font_size", 20)
 	take_btn.custom_minimum_size = Vector2(160, 0)
 	take_btn.pressed.connect(func():
-		var old := GameState.equipment.get(ed.slot) as EquipmentData
-		if old != null:
-			GameState.inventory.append(old)
-		GameState.equipment[ed.slot] = ed
+		if EquipmentData.is_equippable(ed):
+			var old := GameState.equipment.get(ed.slot) as EquipmentData
+			if old != null:
+				GameState.inventory.append(old)
+			GameState.equipment[ed.slot] = ed
+		else:
+			GameState.inventory.append(ed)
 		_close_current_node()
 		overlay.queue_free()
 	)
 	vbox.add_child(take_btn)
 
-	var stash_btn := Button.new()
-	stash_btn.text = "Add to inventory"
-	stash_btn.add_theme_font_size_override("font_size", 17)
-	stash_btn.pressed.connect(func():
-		GameState.inventory.append(ed)
-		_close_current_node()
-		overlay.queue_free()
-	)
-	vbox.add_child(stash_btn)
+	if EquipmentData.is_equippable(ed):
+		var stash_btn := Button.new()
+		stash_btn.text = "Add to inventory"
+		stash_btn.add_theme_font_size_override("font_size", 17)
+		stash_btn.pressed.connect(func():
+			GameState.inventory.append(ed)
+			_close_current_node()
+			overlay.queue_free()
+		)
+		vbox.add_child(stash_btn)
 
 	var leave_btn := Button.new()
 	leave_btn.text = "Leave it"
@@ -861,7 +866,7 @@ func _do_merge(root: Control, overlay: CanvasLayer) -> void:
 	var success: bool = (randi() % 100) < 80
 	var new_item: EquipmentData = null
 	if success:
-		var pool: Array = EquipmentData.all().duplicate()
+		var pool: Array = EquipmentData.loot_pool()
 		pool.shuffle()
 		new_item = (pool[0] as EquipmentData).duplicate()
 		new_item.rarity = (src_rarity + 1) as EquipmentData.Rarity
@@ -1211,7 +1216,7 @@ func _show_shop_overlay(map_node: MapNode) -> void:
 	# Stock is generated once per node and persisted, so leaving and
 	# re-entering the shop shows the remaining items, not fresh stock.
 	if not map_node.shop_stocked:
-		var equip_pool: Array = EquipmentData.all().duplicate()
+		var equip_pool: Array = EquipmentData.loot_pool()
 		equip_pool.shuffle()
 		for i in mini(SHOP_EQUIP_COUNT, equip_pool.size()):
 			map_node.shop_stock_equip.append((equip_pool[i] as EquipmentData).duplicate())
@@ -1561,7 +1566,7 @@ func _build_scroll_select(root: Control, overlay: CanvasLayer) -> void:
 	cv.add_child(inv_grid)
 	for item in GameState.inventory:
 		var ed := item as EquipmentData
-		if ed == null:
+		if ed == null or not EquipmentData.is_equippable(ed):
 			continue
 		inv_grid.add_child(_make_scroll_target_tile(ed, false, root, overlay))
 
@@ -1669,7 +1674,7 @@ func _build_merge_view(root: Control, overlay: CanvasLayer) -> void:
 
 	for item in GameState.inventory:
 		var ed := item as EquipmentData
-		if ed == null:
+		if ed == null or not EquipmentData.is_equippable(ed):
 			continue
 		var selected := _merge_sel.has(ed)
 
@@ -1829,7 +1834,8 @@ func _build_enchant_select(map_node: MapNode, root: Control, overlay: CanvasLaye
 			none_lbl.modulate = Color(0.45, 0.45, 0.45)
 			cv.add_child(none_lbl)
 
-		var inv_equip := GameState.inventory.filter(func(i): return i is EquipmentData)
+		var inv_equip := GameState.inventory.filter(
+				func(i): return i is EquipmentData and EquipmentData.is_equippable(i))
 		if not inv_equip.is_empty():
 			cv.add_child(HSeparator.new())
 			cv.add_child(_inv_section_label("INVENTORY"))
@@ -2086,7 +2092,7 @@ func _build_found_scroll(sd: ScrollData, title: String,
 
 ## Random equipment from the pool, optionally with boosted rarity.
 func _roll_equipment(rarity_boost: int = 0) -> EquipmentData:
-	var pool: Array = EquipmentData.all().duplicate()
+	var pool: Array = EquipmentData.loot_pool()
 	pool.shuffle()
 	var ed := (pool[0] as EquipmentData).duplicate()
 	ed.rarity = mini(ed.rarity + rarity_boost, EquipmentData.Rarity.LEGENDARY)

@@ -32,6 +32,10 @@ window/stretch/mode="canvas_items"
 
 enabled=PackedStringArray("res://addons/simple_cards/plugin.cfg")
 
+[gui]
+
+timers/tooltip_delay_sec=0.0
+
 [physics]
 
 3d/physics_engine="Jolt Physics"

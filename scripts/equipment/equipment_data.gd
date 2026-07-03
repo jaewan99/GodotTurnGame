@@ -1,7 +1,7 @@
 class_name EquipmentData
 extends Resource
 
-enum Slot { WEAPON, OFFHAND, CHEST, HELM, SHOES }
+enum Slot { WEAPON, OFFHAND, CHEST, HELM, SHOES, ITEM }
 
 enum Rarity { COMMON, UNCOMMON, RARE, UNIQUE, LEGENDARY, MYSTERY }
 
@@ -25,7 +25,17 @@ static func rarity_name(r: int) -> String:
 		Rarity.MYSTERY:   return "???"
 	return "Common"
 
-const SLOT_NAMES := {0: "Weapon", 1: "Offhand", 2: "Chest", 3: "Helm", 4: "Shoes"}
+const SLOT_NAMES := {0: "Weapon", 1: "Offhand", 2: "Chest", 3: "Helm", 4: "Shoes", 5: "Item"}
+
+## True when this piece goes in an equipment slot. ITEM-slot pieces
+## (keys, quest items…) sit in the inventory and can never be equipped.
+static func is_equippable(ed: EquipmentData) -> bool:
+	return ed.slot != Slot.ITEM
+
+## Random-drop pool: every equippable piece. ITEM-slot pieces are excluded —
+## they are granted by specific events (e.g. scavenging), not rolled as loot.
+static func loot_pool() -> Array:
+	return all().filter(func(e): return is_equippable(e))
 
 ## One-line stat summary, e.g. "(+3 dmg)".
 static func stat_summary(ed: EquipmentData) -> String:
@@ -41,13 +51,16 @@ static func enchant_tag(ed: EquipmentData) -> String:
 	return " ✦+%d" % ed.enchant_level if ed.enchant_level > 0 else ""
 
 ## Multi-line hover tooltip with the full stat breakdown.
+## Always shows the enchant level (✦+0 when unenchanted) so enchanted
+## and unenchanted copies of the same item are distinguishable.
 static func tooltip(ed: EquipmentData) -> String:
 	var lines: Array[String] = []
-	lines.append(ed.equipment_name + enchant_tag(ed))
+	lines.append("%s  ✦+%d" % [ed.equipment_name, ed.enchant_level])
 	lines.append("Slot: %s  |  Rarity: %s" % [
 		SLOT_NAMES.get(ed.slot, "?"), rarity_name(ed.rarity)
 	])
 	lines.append("─────────────────────")
+	if not is_equippable(ed): lines.append("Cannot be equipped.")
 	if ed.damage_bonus     != 0: lines.append("Damage Bonus:  +%d" % ed.damage_bonus)
 	if ed.block_per_turn   != 0: lines.append("Block/Round:   +%d" % ed.block_per_turn)
 	if ed.max_hp_bonus     != 0: lines.append("Max HP:        +%d" % ed.max_hp_bonus)

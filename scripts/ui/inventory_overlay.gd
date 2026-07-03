@@ -128,7 +128,7 @@ func _build_equipped(parent: VBoxContainer) -> void:
 		var name_lbl := Label.new()
 		name_lbl.add_theme_font_size_override("font_size", 16)
 		if ed != null:
-			name_lbl.text = ed.equipment_name + EquipmentData.enchant_tag(ed)
+			name_lbl.text = "%s  ✦+%d" % [ed.equipment_name, ed.enchant_level]
 			name_lbl.modulate = EquipmentData.rarity_color(ed.rarity)
 		else:
 			name_lbl.text = "— empty —"
@@ -184,15 +184,16 @@ func _build_items(parent: VBoxContainer) -> void:
 		if ed == null:
 			continue
 		var tile := make_tile(ed, TILE)
-		var cap_ed := ed
-		tile.pressed.connect(func():
-			var old := GameState.equipment.get(cap_ed.slot) as EquipmentData
-			if old != null:
-				GameState.inventory.append(old)
-			GameState.equipment[cap_ed.slot] = cap_ed
-			GameState.inventory.erase(cap_ed)
-			_rebuild()
-		)
+		if EquipmentData.is_equippable(ed):
+			var cap_ed := ed
+			tile.pressed.connect(func():
+				var old := GameState.equipment.get(cap_ed.slot) as EquipmentData
+				if old != null:
+					GameState.inventory.append(old)
+				GameState.equipment[cap_ed.slot] = cap_ed
+				GameState.inventory.erase(cap_ed)
+				_rebuild()
+			)
 		grid.add_child(tile)
 
 
