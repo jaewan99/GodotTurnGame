@@ -34,6 +34,7 @@ enabled=PackedStringArray("res://addons/simple_cards/plugin.cfg")
 
 [gui]
 
+theme/default_font_multichannel_signed_distance_field=true
 timers/tooltip_delay_sec=0.0
 
 [physics]
@@ -42,6 +43,5 @@ timers/tooltip_delay_sec=0.0
 
 [rendering]
 
-textures/canvas_textures/default_texture_filter=3
+textures/canvas_textures/default_texture_filter=2
 rendering_device/driver.windows="d3d12"
-2d/snap/snap_2d_transforms_to_pixel=true

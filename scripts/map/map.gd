@@ -35,6 +35,11 @@ const SHOP_SCROLL_COUNT  := 3
 var _nodes: Array[MapNode] = []
 var _uis: Dictionary = {}   # node id -> MapNodeUI
 var _coins_label: Label = null
+## "Coins: " until a coin icon exists in assets/ui/hud, then just the number.
+var _coins_prefix := "Coins: "
+## Legend open/closed, remembered across map visits for this session.
+static var _legend_open := true
+var _deck_btn: Button = null
 var _reachable: Array[int] = []        # updated by _refresh(), used by _draw()
 var _reachable_from: Dictionary = {}   # reachable node id → id of the visited node that first revealed it
 var _current_node: MapNode = null      # node whose overlay is currently open
@@ -65,13 +70,22 @@ func _ready() -> void:
 	else:
 		_nodes = MapGenerator.generate(GameState.floor_num)
 		GameState.map_nodes = _nodes
+	# Materialise the starter deck up front so the Deck viewer works
+	# before the first battle (battlefield keeps its own fallback).
+	if not GameState.has_deck():
+		var starter: Array[CardData] = []
+		starter.assign(CardData.starter_deck())
+		GameState.deck = starter
+
 	_spawn_uis()
 	_compute_map_bounds()
+	# Start the view centred on the player's frontier, not on START.
+	if GameState.current_node_id >= 0 and GameState.current_node_id < _nodes.size():
+		_pan_offset = get_viewport_rect().size / 2.0 - _nodes[GameState.current_node_id].pos
+		_apply_pan()
 	_refresh()
 	queue_redraw()
-	_add_coins_label()
-	_add_inventory_button()
-	_add_floor_indicator()
+	_add_hud()
 
 	# Dojo victory → free guaranteed card upgrade.
 	if GameState.dojo_reward_pending:
@@ -158,7 +172,18 @@ func _draw() -> void:
 	if background_texture != null:
 		draw_texture_rect(background_texture, vp_rect, true)
 	else:
-		draw_rect(vp_rect, Color(0.28, 0.20, 0.12))
+		draw_rect(vp_rect, Color(0.075, 0.085, 0.115))
+
+	# Faint concentric ring guides echoing the radial layout.
+	var ring_center := Vector2(960.0, 540.0)
+	var max_r := 0.0
+	for node in _nodes:
+		max_r = maxf(max_r, node.pos.distance_to(ring_center))
+	var guide_r := MapGenerator.RING_SPACING
+	while guide_r <= max_r + 40.0:
+		draw_arc(ring_center + _pan_offset, guide_r, 0.0, TAU, 96,
+				Color(1.0, 1.0, 1.0, 0.045), 1.5, true)
+		guide_r += MapGenerator.RING_SPACING
 
 	# Secret node glint hints — commented out, secret nodes are now fully invisible until discovered.
 	#for node in _nodes:
@@ -179,7 +204,7 @@ func _draw() -> void:
 				var b := _nodes[cid].pos + _pan_offset
 				var d := (b - a).normalized()
 				var inset := MapNodeUI.RADIUS + 2.0
-				draw_line(a + d * inset, b - d * inset, Color(0.75, 0.75, 0.75, 0.85), 2.0, true)
+				draw_line(a + d * inset, b - d * inset, Color(0.40, 0.40, 0.44, 0.70), 3.0, true)
 
 	# Dotted lines only from the visited node that first revealed each reachable node.
 	# Endpoints are inset by node radius so lines stop at the icon edge, not the center.
@@ -193,7 +218,7 @@ func _draw() -> void:
 		var dir      := (to_pos - from_pos).normalized()
 		var inset    := MapNodeUI.RADIUS + 2.0
 		_draw_dashed_line(from_pos + dir * inset, to_pos - dir * inset,
-				Color(0.50, 0.50, 0.50, 0.65))
+				Color(0.80, 0.80, 0.80, 0.80))
 
 
 func _draw_dashed_line(from: Vector2, to: Vector2, color: Color,
@@ -308,23 +333,243 @@ func _go_battle(node: MapNode, tier: int = -1, bounty: int = 0, mult: int = 1) -
 	get_tree().change_scene_to_file(BATTLE_SCENE)
 
 
-func _add_coins_label() -> void:
+const CARD_VIEWER_SCENE := preload("res://scenes/ui/card_viewer.tscn")
+var _card_viewer: CardViewer = null
+
+
+## Builds the whole map HUD: coins + floor panel top-left,
+## Inventory / Deck buttons top-right.
+func _add_hud() -> void:
+	var panel := PanelContainer.new()
+	panel.add_theme_stylebox_override("panel", _hud_style())
+	panel.set_anchors_preset(Control.PRESET_TOP_LEFT)
+	panel.position = Vector2(16, 14)
+	add_child(panel)
+
+	var hbox := HBoxContainer.new()
+	hbox.add_theme_constant_override("separation", 12)
+	panel.add_child(hbox)
+
+	var coin_tex := _hud_icon("coin")
+	if coin_tex != null:
+		var coin_icon := TextureRect.new()
+		coin_icon.texture = _tinted(coin_tex, Color(1.0, 0.85, 0.25))
+		coin_icon.custom_minimum_size = Vector2(33, 33)
+		coin_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		coin_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		hbox.add_child(coin_icon)
+		_coins_prefix = ""
+
 	_coins_label = Label.new()
 	_coins_label.name = "CoinsLabel"
-	_coins_label.add_theme_font_size_override("font_size", 24)
-	_coins_label.modulate = Color(1.0, 0.85, 0.1)
-	_coins_label.set_anchors_preset(Control.PRESET_TOP_LEFT)
-	_coins_label.offset_left   =  20.0
-	_coins_label.offset_top    =  16.0
-	_coins_label.offset_right  = 320.0
-	_coins_label.offset_bottom =  56.0
-	_coins_label.text = "Coins: %d" % GameState.coins
-	add_child(_coins_label)
+	_coins_label.add_theme_font_size_override("font_size", 30)
+	_coins_label.modulate = Color(1.0, 0.85, 0.25)
+	_coins_label.text = _coins_prefix + str(GameState.coins)
+	hbox.add_child(_coins_label)
+
+	var sep := Label.new()
+	sep.text = "|"
+	sep.add_theme_font_size_override("font_size", 27)
+	sep.modulate = Color(1.0, 1.0, 1.0, 0.25)
+	hbox.add_child(sep)
+
+	var floor_lbl := Label.new()
+	floor_lbl.text = "Floor %d" % GameState.floor_num
+	floor_lbl.add_theme_font_size_override("font_size", 30)
+	floor_lbl.modulate = Color(0.85, 0.85, 0.90)
+	hbox.add_child(floor_lbl)
+
+	var btns := HBoxContainer.new()
+	btns.add_theme_constant_override("separation", 8)
+	btns.set_anchors_preset(Control.PRESET_TOP_RIGHT)
+	btns.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	btns.offset_top = 14.0
+	btns.offset_right = -16.0
+	add_child(btns)
+
+	var inv_btn := _hud_button("Inventory", "inventory", Color(0.76, 0.55, 0.35))
+	inv_btn.pressed.connect(func(): InventoryOverlay.open(self))
+	btns.add_child(inv_btn)
+
+	_deck_btn = _hud_button("Deck (%d)" % GameState.deck.size(), "deck", Color(0.87, 0.52, 0.45))
+	_deck_btn.pressed.connect(_show_deck_viewer)
+	btns.add_child(_deck_btn)
+
+	# ── Bottom-left: control hints ────────────────────────────────────────────
+	var hints := VBoxContainer.new()
+	hints.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
+	hints.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	hints.offset_left = 16.0
+	hints.offset_bottom = -12.0
+	hints.add_theme_constant_override("separation", 2)
+	add_child(hints)
+	for hint in ["Right-drag to pan", "Left-click a glowing node to travel"]:
+		var lbl := Label.new()
+		lbl.text = hint
+		lbl.add_theme_font_size_override("font_size", 20)
+		lbl.modulate = Color(1.0, 1.0, 1.0, 0.38)
+		hints.add_child(lbl)
+
+	# ── Bottom-right: node-type legend with a collapse tab above it ──────────
+	var legend_box := VBoxContainer.new()
+	legend_box.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
+	legend_box.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	legend_box.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	legend_box.offset_right = -16.0
+	legend_box.offset_bottom = -12.0
+	legend_box.add_theme_constant_override("separation", 0)
+	add_child(legend_box)
+
+	# Tab hugs the box's top-left; only its top corners are rounded so the
+	# two shapes read as one attached piece.
+	var tab_btn := _hud_button("Legend ▾" if _legend_open else "Legend ▴")
+	tab_btn.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	for state in ["normal", "hover", "pressed"]:
+		var s: StyleBoxFlat = tab_btn.get_theme_stylebox(state).duplicate()
+		s.corner_radius_bottom_left = 0
+		s.corner_radius_bottom_right = 0
+		tab_btn.add_theme_stylebox_override(state, s)
+	legend_box.add_child(tab_btn)
+
+	var legend_style := _hud_style()
+	legend_style.set_border_width_all(0)
+	legend_style.corner_radius_top_left = 0
+	legend_style.corner_radius_top_right = 0
+	var legend_panel := PanelContainer.new()
+	legend_panel.add_theme_stylebox_override("panel", legend_style)
+	legend_panel.visible = _legend_open
+	legend_box.add_child(legend_panel)
+
+	tab_btn.pressed.connect(func():
+		MapScene._legend_open = not MapScene._legend_open
+		legend_panel.visible = MapScene._legend_open
+		tab_btn.text = "Legend ▾" if MapScene._legend_open else "Legend ▴"
+	)
+
+	var legend := GridContainer.new()
+	legend.columns = 2
+	legend.add_theme_constant_override("h_separation", 36)
+	legend.add_theme_constant_override("v_separation", 8)
+	legend_panel.add_child(legend)
+
+	# Unique node types on this floor. START is obvious; SECRET stays secret.
+	var types: Array = []
+	for node in _nodes:
+		if node.type in [MapNode.Type.START, MapNode.Type.SECRET]:
+			continue
+		if node.type not in types:
+			types.append(node.type)
+	types.sort()
+
+	for t in types:
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 14)
+		legend.add_child(row)
+		var icon_rect := TextureRect.new()
+		icon_rect.custom_minimum_size = Vector2(36, 36)
+		icon_rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		icon_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		var icon_path := MapNodeUI._icon_path(t)
+		if ResourceLoader.exists(icon_path):
+			icon_rect.texture = load(icon_path)
+		row.add_child(icon_rect)
+		var txt := Label.new()
+		txt.text = _type_name(t)
+		txt.add_theme_font_size_override("font_size", 26)
+		txt.modulate = Color(0.80, 0.80, 0.84)
+		row.add_child(txt)
+
+
+## Translucent dark panel style shared by the HUD elements (borderless).
+func _hud_style() -> StyleBoxFlat:
+	var s := StyleBoxFlat.new()
+	s.bg_color = Color(0.03, 0.04, 0.06, 0.72)
+	s.set_corner_radius_all(8)
+	s.content_margin_left = 14.0
+	s.content_margin_right = 14.0
+	s.content_margin_top = 7.0
+	s.content_margin_bottom = 7.0
+	return s
+
+
+## Folder scanned for HUD art (coin.png, inventory.png, deck.png).
+const HUD_ICON_DIR := "res://assets/ui/hud/"
+
+## HUD icon texture by name, or null when the PNG hasn't been added yet.
+static func _hud_icon(icon_name: String) -> Texture2D:
+	var path := "%s%s.png" % [HUD_ICON_DIR, icon_name]
+	if ResourceLoader.exists(path):
+		return load(path)
+	return null
+
+
+## Recolors a silhouette icon to a flat tint, keeping its alpha shape.
+## Needed because the source art is black — modulate can't brighten black.
+static func _tinted(tex: Texture2D, tint: Color) -> Texture2D:
+	var img := tex.get_image()
+	img.convert(Image.FORMAT_RGBA8)
+	for y in img.get_height():
+		for x in img.get_width():
+			var a := img.get_pixel(x, y).a
+			img.set_pixel(x, y, Color(tint.r, tint.g, tint.b, a))
+	return ImageTexture.create_from_image(img)
+
+
+func _hud_button(label: String, icon_name: String = "",
+		icon_tint: Color = Color.WHITE) -> Button:
+	var btn := Button.new()
+	btn.text = label
+	btn.add_theme_font_size_override("font_size", 26)
+	var hover := _hud_style()
+	hover.bg_color = Color(0.10, 0.11, 0.15, 0.85)
+	btn.add_theme_stylebox_override("normal", _hud_style())
+	btn.add_theme_stylebox_override("hover", hover)
+	btn.add_theme_stylebox_override("pressed", hover)
+	btn.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
+	if icon_name != "":
+		var tex := _hud_icon(icon_name)
+		if tex != null:
+			btn.icon = _tinted(tex, icon_tint)
+			btn.expand_icon = true
+			btn.add_theme_constant_override("icon_max_width", 30)
+			for state in ["icon_normal_color", "icon_hover_color",
+					"icon_pressed_color", "icon_focus_color"]:
+				btn.add_theme_color_override(state, Color.WHITE)
+	return btn
+
+
+static func _type_name(t: MapNode.Type) -> String:
+	match t:
+		MapNode.Type.FIGHT:    return "Fight"
+		MapNode.Type.ELITE:    return "Elite"
+		MapNode.Type.BOSS:     return "Boss"
+		MapNode.Type.SHOP:     return "Shop"
+		MapNode.Type.REST:     return "Wizard"
+		MapNode.Type.EVENT:    return "Event"
+		MapNode.Type.ENCHANT:  return "Enchant"
+		MapNode.Type.FORGE:    return "Forge"
+		MapNode.Type.MYSTERY:  return "Mystery"
+		MapNode.Type.GAMBLE:   return "Gamble"
+		MapNode.Type.TREASURE: return "Treasure"
+		MapNode.Type.SHRINE:   return "Shrine"
+		MapNode.Type.DOJO:     return "Dojo"
+		MapNode.Type.BOUNTY:   return "Bounty"
+	return "?"
+
+
+func _show_deck_viewer() -> void:
+	if _card_viewer == null or not is_instance_valid(_card_viewer):
+		_card_viewer = CARD_VIEWER_SCENE.instantiate()
+		add_child(_card_viewer)
+	_refresh_coins_label()
+	_card_viewer.show_cards("Deck  (%d)" % GameState.deck.size(), GameState.deck)
 
 
 func _refresh_coins_label() -> void:
 	if is_instance_valid(_coins_label):
-		_coins_label.text = "Coins: %d" % GameState.coins
+		_coins_label.text = _coins_prefix + str(GameState.coins)
+	if is_instance_valid(_deck_btn):
+		_deck_btn.text = "Deck (%d)" % GameState.deck.size()
 
 
 func _show_toast(msg: String) -> void:
@@ -665,9 +910,13 @@ func _build_scavenge_result(root: Control, overlay: CanvasLayer) -> void:
 		_build_scavenge_scroll_result(root, overlay)
 		return
 
-	var pool: Array = EquipmentData.all().duplicate()
-	pool.shuffle()
-	var ed := (pool[0] as EquipmentData).duplicate()
+	# 10% of scavenged equipment finds are the mysterious key;
+	# otherwise a normal weighted drop.
+	var ed: EquipmentData
+	if randi() % 100 < 10:
+		ed = (EquipmentData.by_id(&"key") as EquipmentData).duplicate()
+	else:
+		ed = EquipmentData.random_drop()
 
 	var vbox := VBoxContainer.new()
 	vbox.set_anchors_preset(Control.PRESET_CENTER)
@@ -774,78 +1023,6 @@ func _build_scavenge_result(root: Control, overlay: CanvasLayer) -> void:
 	vbox.add_child(leave_btn)
 
 
-# ── Inventory button ──────────────────────────────────────────────────────────
-
-func _add_inventory_button() -> void:
-	var btn := Button.new()
-	btn.text = "Inventory"
-	btn.add_theme_font_size_override("font_size", 18)
-	btn.set_anchors_preset(Control.PRESET_TOP_LEFT)
-	btn.offset_left   =  20.0
-	btn.offset_top    =  60.0
-	btn.offset_right  = 170.0
-	btn.offset_bottom =  96.0
-	btn.pressed.connect(func(): InventoryOverlay.open(self))
-	add_child(btn)
-
-
-# ── Floor progress indicator ──────────────────────────────────────────────────
-
-func _add_floor_indicator() -> void:
-	var hbox := HBoxContainer.new()
-	hbox.set_anchors_preset(Control.PRESET_TOP_WIDE)
-	hbox.offset_top    =  10.0
-	hbox.offset_bottom =  50.0
-	hbox.alignment     = BoxContainer.ALIGNMENT_CENTER
-	hbox.add_theme_constant_override("separation", 8)
-	add_child(hbox)
-
-	for i in GameState.MAX_FLOORS:
-		var floor_num := i + 1
-
-		if i > 0:
-			var arrow := Label.new()
-			arrow.text = "→"
-			arrow.vertical_alignment   = VERTICAL_ALIGNMENT_CENTER
-			arrow.add_theme_font_size_override("font_size", 16)
-			arrow.add_theme_color_override("font_color", Color(0.38, 0.38, 0.40))
-			hbox.add_child(arrow)
-
-		var panel := PanelContainer.new()
-		var style := StyleBoxFlat.new()
-		style.corner_radius_top_left     = 5
-		style.corner_radius_top_right    = 5
-		style.corner_radius_bottom_left  = 5
-		style.corner_radius_bottom_right = 5
-		style.set_border_width_all(2)
-
-		var lbl := Label.new()
-		lbl.add_theme_font_size_override("font_size", 13)
-		lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		lbl.vertical_alignment   = VERTICAL_ALIGNMENT_CENTER
-		lbl.custom_minimum_size  = Vector2(100, 0)
-
-		if floor_num < GameState.floor_num:
-			style.bg_color     = Color(0.12, 0.28, 0.12)
-			style.border_color = Color(0.25, 0.55, 0.25)
-			lbl.text = "✓  Floor %d" % floor_num
-			lbl.add_theme_color_override("font_color", Color(0.50, 0.85, 0.50))
-		elif floor_num == GameState.floor_num:
-			style.bg_color     = Color(0.38, 0.26, 0.03)
-			style.border_color = Color(0.95, 0.78, 0.15)
-			lbl.text = "★  Floor %d" % floor_num
-			lbl.add_theme_color_override("font_color", Color(1.00, 0.88, 0.20))
-		else:
-			style.bg_color     = Color(0.10, 0.10, 0.12)
-			style.border_color = Color(0.22, 0.22, 0.24)
-			lbl.text = "Floor %d" % floor_num
-			lbl.add_theme_color_override("font_color", Color(0.35, 0.35, 0.37))
-
-		panel.add_theme_stylebox_override("panel", style)
-		panel.add_child(lbl)
-		hbox.add_child(panel)
-
-
 func _is_valid_merge() -> bool:
 	if _merge_sel.size() != 3:
 		return false
@@ -866,10 +1043,9 @@ func _do_merge(root: Control, overlay: CanvasLayer) -> void:
 	var success: bool = (randi() % 100) < 80
 	var new_item: EquipmentData = null
 	if success:
-		var pool: Array = EquipmentData.loot_pool()
-		pool.shuffle()
-		new_item = (pool[0] as EquipmentData).duplicate()
-		new_item.rarity = (src_rarity + 1) as EquipmentData.Rarity
+		# Reward is an actual item of the next tier, so rarity and stats agree.
+		var pool: Array = EquipmentData.of_rarity(src_rarity + 1)
+		new_item = (pool.pick_random() as EquipmentData).duplicate()
 		GameState.inventory.append(new_item)
 
 	_build_merge_result(new_item, success, src_rarity, root, overlay)
@@ -936,6 +1112,8 @@ func _apply_scroll(sd: ScrollData, ed: EquipmentData, is_equipped: bool) -> Arra
 			ScrollData.StatType.MAX_HP:     ed.max_hp_bonus     += sd.boost_amount
 			ScrollData.StatType.MAX_ENERGY: ed.max_energy_bonus += sd.boost_amount
 			ScrollData.StatType.CRIT:       ed.crit_chance      += sd.boost_amount
+		# Scroll boosts count toward the item's upgrade cap.
+		ed.enchant_level += 1
 		return [true, false]
 	else:
 		var destroyed: bool = (randi() % 100) < sd.destroy_chance
@@ -1216,10 +1394,10 @@ func _show_shop_overlay(map_node: MapNode) -> void:
 	# Stock is generated once per node and persisted, so leaving and
 	# re-entering the shop shows the remaining items, not fresh stock.
 	if not map_node.shop_stocked:
-		var equip_pool: Array = EquipmentData.loot_pool()
-		equip_pool.shuffle()
-		for i in mini(SHOP_EQUIP_COUNT, equip_pool.size()):
-			map_node.shop_stock_equip.append((equip_pool[i] as EquipmentData).duplicate())
+		for i in SHOP_EQUIP_COUNT:
+			var drop := EquipmentData.random_drop()
+			if drop != null:
+				map_node.shop_stock_equip.append(drop)
 
 		var scroll_pool: Array = ScrollData.all().duplicate()
 		scroll_pool.shuffle()
@@ -1554,7 +1732,7 @@ func _build_scroll_select(root: Control, overlay: CanvasLayer) -> void:
 	cv.add_child(eq_grid)
 	for slot_int in [0, 1, 2, 3, 4]:
 		var ed := GameState.equipment.get(slot_int) as EquipmentData
-		if ed == null:
+		if ed == null or ed.enchant_level >= ed.max_enchant:
 			continue
 		eq_grid.add_child(_make_scroll_target_tile(ed, true, root, overlay))
 
@@ -1566,7 +1744,8 @@ func _build_scroll_select(root: Control, overlay: CanvasLayer) -> void:
 	cv.add_child(inv_grid)
 	for item in GameState.inventory:
 		var ed := item as EquipmentData
-		if ed == null or not EquipmentData.is_equippable(ed):
+		if ed == null or not EquipmentData.is_equippable(ed) \
+				or ed.enchant_level >= ed.max_enchant:
 			continue
 		inv_grid.add_child(_make_scroll_target_tile(ed, false, root, overlay))
 
@@ -1593,12 +1772,14 @@ func _make_scroll_target_tile(ed: EquipmentData, is_equipped: bool,
 
 func _scroll_drag_data(_pos: Vector2, sd: ScrollData, tile: Control) -> Variant:
 	var prev := TextureRect.new()
-	prev.texture = load(InventoryOverlay.ICON_PATH)
+	var art := InventoryOverlay.scroll_icon(sd)
+	prev.texture = art if art != null else load(InventoryOverlay.ICON_PATH)
 	prev.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	prev.stretch_mode = TextureRect.STRETCH_SCALE
 	prev.custom_minimum_size = Vector2(56, 56)
 	prev.size = Vector2(56, 56)
-	prev.modulate = sd.stat_color()
+	if art == null:
+		prev.modulate = sd.stat_color()
 	tile.set_drag_preview(prev)
 	return {"scroll": sd}
 
@@ -1856,6 +2037,7 @@ func _build_enchant_row(ed: EquipmentData, map_node: MapNode, root: Control, ove
 	var cost := ENCHANT_BASE_COST * (ed.enchant_level + 1)
 	var rate: int = ENCHANT_SUCCESS_RATES[mini(ed.enchant_level, ENCHANT_SUCCESS_RATES.size() - 1)]
 	var can_afford := GameState.coins >= cost
+	var maxed := ed.enchant_level >= ed.max_enchant
 
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 10)
@@ -1863,23 +2045,23 @@ func _build_enchant_row(ed: EquipmentData, map_node: MapNode, root: Control, ove
 	var info := Label.new()
 	info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	info.add_theme_font_size_override("font_size", 14)
-	info.text = "%s%s  [%s]  %s  →  %dg  |  %d%%" % [
+	info.text = "%s ✦+%d  [%s]  %s  →  %s" % [
 		ed.equipment_name,
-		_equipment_enchant_tag(ed),
+		ed.enchant_level,
 		EquipmentData.rarity_name(ed.rarity),
 		_equipment_stat_summary(ed),
-		cost, rate,
+		"MAX" if maxed else "%dg  |  %d%%" % [cost, rate],
 	]
 	var base_col := EquipmentData.rarity_color(ed.rarity)
-	info.modulate = base_col if can_afford else base_col * Color(0.55, 0.55, 0.55, 1.0)
+	info.modulate = base_col if (can_afford and not maxed) else base_col * Color(0.55, 0.55, 0.55, 1.0)
 	info.tooltip_text = _equipment_tooltip(ed)
 	info.mouse_filter = Control.MOUSE_FILTER_PASS
 	row.add_child(info)
 
 	var enchant_btn := Button.new()
-	enchant_btn.text = "Enchant"
+	enchant_btn.text = "MAX" if maxed else "Enchant"
 	enchant_btn.add_theme_font_size_override("font_size", 13)
-	enchant_btn.disabled = not can_afford
+	enchant_btn.disabled = maxed or not can_afford
 	var cap_ed := ed
 	var cap_cost := cost
 	var cap_rate := rate
@@ -2090,13 +2272,9 @@ func _build_found_scroll(sd: ScrollData, title: String,
 	_overlay_button(vbox, "Leave it", func(): overlay.queue_free(), 16, true)
 
 
-## Random equipment from the pool, optionally with boosted rarity.
+## Random equipment drop: weighted rarity roll, optionally boosted by tiers.
 func _roll_equipment(rarity_boost: int = 0) -> EquipmentData:
-	var pool: Array = EquipmentData.loot_pool()
-	pool.shuffle()
-	var ed := (pool[0] as EquipmentData).duplicate()
-	ed.rarity = mini(ed.rarity + rarity_boost, EquipmentData.Rarity.LEGENDARY)
-	return ed
+	return EquipmentData.random_drop(rarity_boost)
 
 
 # ── Mystery "?" node ──────────────────────────────────────────────────────────

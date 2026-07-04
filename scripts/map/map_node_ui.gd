@@ -10,7 +10,28 @@ extends Button
 const RADIUS := 30.0
 
 var data: MapNode
+## Whether to draw the golden "you can go here" halo.
+var _glow := false
+var _glow_time := 0.0
 signal node_clicked(node: MapNode)
+
+
+func _process(delta: float) -> void:
+	_glow_time += delta
+	queue_redraw()
+
+
+func _draw() -> void:
+	if not _glow:
+		return
+	var c := size / 2.0
+	var r := minf(size.x, size.y) / 2.0
+	# Breathing pulse: ring expands and contracts to invite a click.
+	var pulse := 2.5 + 2.5 * sin(_glow_time * 3.0)
+	draw_arc(c, r + 3.0 + pulse, 0.0, TAU, 48,
+			Color(1.0, 0.85, 0.40, 0.50 - pulse * 0.05), 2.0, true)
+	draw_arc(c, r + 7.0 + pulse, 0.0, TAU, 48,
+			Color(1.0, 0.85, 0.40, 0.22 - pulse * 0.03), 2.0, true)
 
 
 func setup(map_node: MapNode) -> void:
@@ -45,14 +66,21 @@ func setup(map_node: MapNode) -> void:
 
 	pressed.connect(func(): node_clicked.emit(data))
 
+	# Threat hierarchy: boss towers over everything, elites stand out.
 	if map_node.type == MapNode.Type.BOSS:
-		var bigger := Vector2(RADIUS * 2.6, RADIUS * 2.6)
-		custom_minimum_size = bigger
-		size                = bigger
-		pivot_offset        = bigger / 2.0
-		position            = map_node.pos - bigger / 2.0
+		_resize_to(RADIUS * 2.6)
+	elif map_node.type == MapNode.Type.ELITE:
+		_resize_to(RADIUS * 2.3)
 
 	refresh(false)
+
+
+func _resize_to(diameter: float) -> void:
+	var sz := Vector2(diameter, diameter)
+	custom_minimum_size = sz
+	size                = sz
+	pivot_offset        = sz / 2.0
+	position            = data.pos - sz / 2.0
 
 
 func refresh(reachable: bool) -> void:
@@ -69,6 +97,10 @@ func refresh(reachable: bool) -> void:
 	else:
 		modulate = Color(0.22, 0.22, 0.22, 0.75)
 		disabled  = true
+
+	_glow = reachable and not data.visited
+	set_process(_glow)
+	queue_redraw()
 
 
 func _apply_flat_style() -> void:

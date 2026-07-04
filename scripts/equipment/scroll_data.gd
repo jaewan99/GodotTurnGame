@@ -35,6 +35,7 @@ static func _from_dict(d: Dictionary) -> ScrollData:
 	sd.id             = StringName(d.get("id", ""))
 	sd.scroll_name    = d.get("scroll_name", "")
 	sd.description    = d.get("description", "")
+	sd.rarity         = d.get("rarity", 0)
 	sd.stat_type      = d.get("stat_type", 0)
 	sd.boost_amount   = d.get("boost_amount", 1)
 	sd.success_chance = d.get("success_chance", 70)
@@ -44,6 +45,8 @@ static func _from_dict(d: Dictionary) -> ScrollData:
 @export var id: StringName = &""
 @export var scroll_name: String = "Scroll"
 @export_multiline var description: String = ""
+## Same scale as EquipmentData.Rarity — drives the tile border color.
+@export var rarity: int = 0
 @export var stat_type: int = 0   # StatType enum value
 @export var boost_amount: int = 1
 @export var success_chance: int = 70

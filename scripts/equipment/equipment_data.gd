@@ -37,6 +37,37 @@ static func is_equippable(ed: EquipmentData) -> bool:
 static func loot_pool() -> Array:
 	return all().filter(func(e): return is_equippable(e))
 
+## Drop chance per rarity tier in percent, COMMON → LEGENDARY. Sums to 100.
+const RARITY_WEIGHTS := [40, 30, 17, 10, 3]
+
+## Weighted rarity roll, shifted up by `boost` tiers (capped at LEGENDARY).
+static func roll_rarity(boost: int = 0) -> int:
+	var roll := randi() % 100
+	var acc := 0
+	var tier := 0
+	for r in RARITY_WEIGHTS.size():
+		acc += RARITY_WEIGHTS[r]
+		if roll < acc:
+			tier = r
+			break
+	return mini(tier + boost, Rarity.LEGENDARY)
+
+## All equippable items of one rarity tier.
+static func of_rarity(r: int) -> Array:
+	return loot_pool().filter(func(e): return e.rarity == r)
+
+## Fresh copy of a random drop: weighted rarity first, then a random item
+## within that tier. Steps down a tier if the rolled one has no items.
+static func random_drop(rarity_boost: int = 0) -> EquipmentData:
+	var tier := roll_rarity(rarity_boost)
+	var pool := of_rarity(tier)
+	while pool.is_empty() and tier > 0:
+		tier -= 1
+		pool = of_rarity(tier)
+	if pool.is_empty():
+		return null
+	return (pool.pick_random() as EquipmentData).duplicate()
+
 ## One-line stat summary, e.g. "(+3 dmg)".
 static func stat_summary(ed: EquipmentData) -> String:
 	if ed.damage_bonus     > 0: return "(+%d dmg)"      % ed.damage_bonus
@@ -59,6 +90,7 @@ static func tooltip(ed: EquipmentData) -> String:
 	lines.append("Slot: %s  |  Rarity: %s" % [
 		SLOT_NAMES.get(ed.slot, "?"), rarity_name(ed.rarity)
 	])
+	lines.append("Max Enchants: %d" % ed.max_enchant)
 	lines.append("─────────────────────")
 	if not is_equippable(ed): lines.append("Cannot be equipped.")
 	if ed.damage_bonus     != 0: lines.append("Damage Bonus:  +%d" % ed.damage_bonus)
@@ -93,6 +125,9 @@ static func _load_json() -> Array:
 		return []
 	var result: Array = []
 	for d in data:
+		# Entries without an "id" are section dividers ("_comment"), not items.
+		if not d.has("id"):
+			continue
 		result.append(_from_dict(d))
 	return result
 
@@ -108,6 +143,7 @@ static func _from_dict(d: Dictionary) -> EquipmentData:
 	ed.max_hp_bonus    = d.get("max_hp_bonus", 0)
 	ed.max_energy_bonus = d.get("max_energy_bonus", 0)
 	ed.crit_chance     = d.get("crit_chance", 0)
+	ed.max_enchant     = d.get("max_enchant", 3)
 	ed.is_active       = d.get("isActive", false)
 	return ed
 
@@ -123,6 +159,8 @@ static func _from_dict(d: Dictionary) -> EquipmentData:
 @export var max_hp_bonus: int = 0       # CHEST   — added to player max HP at battle start
 @export var max_energy_bonus: int = 0   # HELM    — added to player max energy at battle start
 @export var crit_chance: int = 0        # SHOES   — % chance to deal double damage (0–100)
+## Total upgrade cap (forge enchants + scroll boosts), scales with rarity.
+@export var max_enchant: int = 3
 @export var is_active: bool = false
 
 ## Tracks how many times this item was successfully enchanted at an Enchant node.

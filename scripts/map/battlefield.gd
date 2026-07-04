@@ -934,13 +934,13 @@ func _show_win_reward() -> void:
 		_:                  card_count = 3; equip_count = 0
 	var card_pool: Array = CardData.reward_pool().duplicate()
 	card_pool.shuffle()
-	var equip_pool: Array = EquipmentData.loot_pool()
-	equip_pool.shuffle()
 	var choices: Array = []
 	for i in mini(card_count, card_pool.size()):
 		choices.append((card_pool[i] as CardData).duplicate())
-	for i in mini(equip_count, equip_pool.size()):
-		choices.append((equip_pool[i] as EquipmentData).duplicate())
+	for i in equip_count:
+		var drop := EquipmentData.random_drop()
+		if drop != null:
+			choices.append(drop)
 
 	# Full-screen overlay (CanvasLayer so it appears above everything).
 	var overlay := CanvasLayer.new()

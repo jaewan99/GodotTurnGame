@@ -93,9 +93,10 @@ static func generate(floor_num: int = 1, rng_seed: int = 0) -> Array[MapNode]:
 			else:
 				t = outer_types[type_cursor]
 				type_cursor += 1
-			var angle := (TAU / count) * i + rng.randf_range(-0.2, 0.2)
+			var angle := (TAU / count) * i + rng.randf_range(-0.35, 0.35)
 			var n := _node(nodes.size(), t,
-					center + Vector2(cos(angle), sin(angle)) * radius)
+					center + Vector2(cos(angle), sin(angle))
+						* (radius + rng.randf_range(-25.0, 25.0)))
 			if t not in [MapNode.Type.FIGHT, MapNode.Type.ELITE, MapNode.Type.BOSS]:
 				n.always_accessible = true
 			ids.append(n.id)

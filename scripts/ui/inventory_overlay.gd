@@ -12,6 +12,31 @@ extends CanvasLayer
 ## Placeholder icon used for every item until real art exists.
 const ICON_PATH := "res://icon.svg"
 
+## Root folder for item art, organised in one subfolder per equipment slot
+## plus "etc" (non-equippable items) and "scrolls". Drop a PNG named after
+## the item's id (e.g. weapon/iron_sword.png, etc/key.png,
+## scrolls/attack_scroll.png) and it is picked up automatically; items
+## without art fall back to the tinted placeholder.
+const ITEM_ART_DIR := "res://assets/items/"
+
+## Slot (int) → art subfolder. ITEM-slot pieces live in "etc".
+const ART_SUBDIRS := {0: "weapon", 1: "offhand", 2: "chest", 3: "helm", 4: "shoes", 5: "etc"}
+
+## Art for an id inside one subfolder, or null when none exists yet.
+static func icon_for(id: StringName, subdir: String) -> Texture2D:
+	var path := "%s%s/%s.png" % [ITEM_ART_DIR, subdir, id]
+	if ResourceLoader.exists(path):
+		return load(path)
+	return null
+
+## Art for a piece of equipment (subfolder from its slot), or null.
+static func equip_icon(ed: EquipmentData) -> Texture2D:
+	return icon_for(ed.id, ART_SUBDIRS.get(ed.slot, "etc"))
+
+## Art for a scroll, or null.
+static func scroll_icon(sd: ScrollData) -> Texture2D:
+	return icon_for(sd.id, "scrolls")
+
 const TILE := 86.0          # square tile size (px)
 const EQUIP_TILE := 96.0    # equipped slot tile size (px)
 
@@ -258,12 +283,15 @@ static func make_tile(ed: EquipmentData, tile_size: float, empty_slot: int = -1)
 
 	if ed != null:
 		var icon := TextureRect.new()
-		icon.texture = load(ICON_PATH)
+		var art := equip_icon(ed)
+		icon.texture = art if art != null else load(ICON_PATH)
+		icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 		icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 		icon.set_anchors_preset(Control.PRESET_FULL_RECT)
 		icon.offset_left = 12; icon.offset_right = -12
 		icon.offset_top = 12; icon.offset_bottom = -12
-		icon.modulate = EquipmentData.rarity_color(ed.rarity)
+		if art == null:
+			icon.modulate = EquipmentData.rarity_color(ed.rarity)
 		icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		btn.add_child(icon)
 
@@ -302,7 +330,9 @@ static func make_scroll_tile(sd: ScrollData, tile_size: float = TILE) -> Button:
 	var btn := Button.new()
 	btn.custom_minimum_size = Vector2(tile_size, tile_size)
 
-	var border: Color = sd.stat_color()
+	# Border follows rarity like equipment tiles; the placeholder icon
+	# keeps the stat color so scroll types stay distinguishable.
+	var border: Color = EquipmentData.rarity_color(sd.rarity)
 	for state in ["normal", "hover", "pressed", "disabled", "focus"]:
 		var s := StyleBoxFlat.new()
 		s.bg_color = Color(0.10, 0.10, 0.13) if state != "hover" else Color(0.16, 0.16, 0.20)
@@ -312,12 +342,15 @@ static func make_scroll_tile(sd: ScrollData, tile_size: float = TILE) -> Button:
 		btn.add_theme_stylebox_override(state, s)
 
 	var icon := TextureRect.new()
-	icon.texture = load(ICON_PATH)
+	var art := scroll_icon(sd)
+	icon.texture = art if art != null else load(ICON_PATH)
+	icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	icon.set_anchors_preset(Control.PRESET_FULL_RECT)
 	icon.offset_left = 12; icon.offset_right = -12
 	icon.offset_top = 12; icon.offset_bottom = -12
-	icon.modulate = border
+	if art == null:
+		icon.modulate = sd.stat_color()
 	icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	btn.add_child(icon)
 
@@ -332,8 +365,9 @@ static func make_scroll_tile(sd: ScrollData, tile_size: float = TILE) -> Button:
 	boost.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	btn.add_child(boost)
 
-	btn.tooltip_text = "%s\n+%d %s\n%d%% success  /  %d%% destroy on fail\n(use at the Forge node)" % [
-		sd.scroll_name, sd.boost_amount, sd.stat_label(),
+	btn.tooltip_text = "%s\nRarity: %s\n+%d %s\n%d%% success  /  %d%% destroy on fail\n(use at the Forge node)" % [
+		sd.scroll_name, EquipmentData.rarity_name(sd.rarity),
+		sd.boost_amount, sd.stat_label(),
 		sd.success_chance, sd.destroy_chance,
 	]
 	return btn

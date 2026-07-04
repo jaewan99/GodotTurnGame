@@ -1,11 +1,13 @@
 [
+  { "_comment": "════════ COMMON (rarity 0) — Wood & Leather set ════════" },
   {
-	"id": "iron_sword",
-	"equipment_name": "Iron Sword",
-	"description": "A sturdy blade. All attacks deal more damage.",
+	"id": "wooden_sword",
+	"equipment_name": "Wooden Sword",
+	"description": "A practice bokken. Better than bare fists.",
 	"slot": 0,
 	"rarity": 0,
-	"damage_bonus": 3,
+	"max_enchant": 3,
+	"damage_bonus": 2,
 	"isActive": false
   },
   {
@@ -14,6 +16,7 @@
 	"description": "A battered but reliable shield. Absorbs hits each round.",
 	"slot": 1,
 	"rarity": 0,
+	"max_enchant": 3,
 	"block_per_turn": 2,
 	"isActive": false
   },
@@ -23,7 +26,60 @@
 	"description": "Worn but thick hide. Increases maximum health.",
 	"slot": 2,
 	"rarity": 0,
+	"max_enchant": 3,
 	"max_hp_bonus": 10,
+	"isActive": false
+  },
+  {
+	"id": "leather_cap",
+	"equipment_name": "Leather Cap",
+	"description": "Keeps the rain off and the mind clear. Raises maximum energy.",
+	"slot": 3,
+	"rarity": 0,
+	"max_enchant": 3,
+	"max_energy_bonus": 1,
+	"isActive": false
+  },
+  {
+	"id": "leather_boots",
+	"equipment_name": "Leather Boots",
+	"description": "Broken-in and comfortable. Attacks have a small chance to deal double damage.",
+	"slot": 4,
+	"rarity": 0,
+	"max_enchant": 3,
+	"crit_chance": 10,
+	"isActive": false
+  },
+
+  { "_comment": "════════ UNCOMMON (rarity 1) — Iron set ════════" },
+  {
+	"id": "iron_sword",
+	"equipment_name": "Iron Sword",
+	"description": "A sturdy blade. All attacks deal more damage.",
+	"slot": 0,
+	"rarity": 1,
+	"max_enchant": 5,
+	"damage_bonus": 4,
+	"isActive": false
+  },
+  {
+	"id": "iron_shield",
+	"equipment_name": "Iron Shield",
+	"description": "Heavy but dependable. Absorbs hits each round.",
+	"slot": 1,
+	"rarity": 1,
+	"max_enchant": 5,
+	"block_per_turn": 3,
+	"isActive": false
+  },
+  {
+	"id": "iron_chest",
+	"equipment_name": "Iron Chestplate",
+	"description": "Cold metal between you and the world. Increases maximum health.",
+	"slot": 2,
+	"rarity": 1,
+	"max_enchant": 5,
+	"max_hp_bonus": 18,
 	"isActive": false
   },
   {
@@ -31,25 +87,186 @@
 	"equipment_name": "Iron Helm",
 	"description": "Clear-headed protection. Raises maximum energy.",
 	"slot": 3,
-	"rarity": 0,
-	"max_energy_bonus": 1,
+	"rarity": 1,
+	"max_enchant": 5,
+	"max_energy_bonus": 2,
 	"isActive": false
   },
   {
-	"id": "swift_boots",
-	"equipment_name": "Swift Boots",
-	"description": "Light and fast. Attacks have a chance to deal double damage.",
+	"id": "iron_greaves",
+	"equipment_name": "Iron Greaves",
+	"description": "Plated footwork. Attacks have a chance to deal double damage.",
 	"slot": 4,
-	"rarity": 0,
+	"rarity": 1,
+	"max_enchant": 5,
 	"crit_chance": 15,
 	"isActive": false
   },
+
+  { "_comment": "════════ RARE (rarity 2) — Steel set ════════" },
+  {
+	"id": "steel_katana",
+	"equipment_name": "Steel Katana",
+	"description": "Folded a thousand times. All attacks deal far more damage.",
+	"slot": 0,
+	"rarity": 2,
+	"max_enchant": 7,
+	"damage_bonus": 6,
+	"isActive": false
+  },
+  {
+	"id": "steel_shield",
+	"equipment_name": "Steel Shield",
+	"description": "Polished to a mirror shine. Absorbs heavy hits each round.",
+	"slot": 1,
+	"rarity": 2,
+	"max_enchant": 7,
+	"block_per_turn": 5,
+	"isActive": false
+  },
+  {
+	"id": "steel_cuirass",
+	"equipment_name": "Steel Cuirass",
+	"description": "Forged for war. Greatly increases maximum health.",
+	"slot": 2,
+	"rarity": 2,
+	"max_enchant": 7,
+	"max_hp_bonus": 28,
+	"isActive": false
+  },
+  {
+	"id": "steel_kabuto",
+	"equipment_name": "Steel Kabuto",
+	"description": "A samurai's crested helm. Raises maximum energy.",
+	"slot": 3,
+	"rarity": 2,
+	"max_enchant": 7,
+	"max_energy_bonus": 2,
+	"isActive": false
+  },
+  {
+	"id": "steel_tabi",
+	"equipment_name": "Steel-Toed Tabi",
+	"description": "Silent and swift. Attacks have a good chance to deal double damage.",
+	"slot": 4,
+	"rarity": 2,
+	"max_enchant": 7,
+	"crit_chance": 20,
+	"isActive": false
+  },
+
+  { "_comment": "════════ UNIQUE (rarity 3) — Demon set ════════" },
+  {
+	"id": "demon_fang",
+	"equipment_name": "Demon Fang",
+	"description": "A blade carved from a yokai's tooth. It hungers.",
+	"slot": 0,
+	"rarity": 3,
+	"max_enchant": 9,
+	"damage_bonus": 9,
+	"isActive": false
+  },
+  {
+	"id": "demon_scale_shield",
+	"equipment_name": "Demon Scale Shield",
+	"description": "Scales that once turned aside swords still do. Absorbs heavy hits each round.",
+	"slot": 1,
+	"rarity": 3,
+	"max_enchant": 9,
+	"block_per_turn": 7,
+	"isActive": false
+  },
+  {
+	"id": "demon_hide_armor",
+	"equipment_name": "Demon Hide Armor",
+	"description": "The hide refuses to die. Greatly increases maximum health.",
+	"slot": 2,
+	"rarity": 3,
+	"max_enchant": 9,
+	"max_hp_bonus": 40,
+	"isActive": false
+  },
+  {
+	"id": "demon_horn_helm",
+	"equipment_name": "Demon Horn Helm",
+	"description": "Whispers of the old beast sharpen your focus. Raises maximum energy.",
+	"slot": 3,
+	"rarity": 3,
+	"max_enchant": 9,
+	"max_energy_bonus": 3,
+	"isActive": false
+  },
+  {
+	"id": "demon_stride_boots",
+	"equipment_name": "Demon Stride Boots",
+	"description": "Each step lands where the enemy least expects. High chance to deal double damage.",
+	"slot": 4,
+	"rarity": 3,
+	"max_enchant": 9,
+	"crit_chance": 25,
+	"isActive": false
+  },
+
+  { "_comment": "════════ LEGENDARY (rarity 4) — Dragon set ════════" },
+  {
+	"id": "dragon_blade",
+	"equipment_name": "Dragon Blade",
+	"description": "Quenched in dragonfire. All attacks deal devastating damage.",
+	"slot": 0,
+	"rarity": 4,
+	"max_enchant": 11,
+	"damage_bonus": 12,
+	"isActive": false
+  },
+  {
+	"id": "dragon_scale_shield",
+	"equipment_name": "Dragon Scale Shield",
+	"description": "Nothing short of a mountain moves it. Absorbs massive hits each round.",
+	"slot": 1,
+	"rarity": 4,
+	"max_enchant": 11,
+	"block_per_turn": 10,
+	"isActive": false
+  },
+  {
+	"id": "dragon_plate",
+	"equipment_name": "Dragon Plate",
+	"description": "Armor of living scale. Massively increases maximum health.",
+	"slot": 2,
+	"rarity": 4,
+	"max_enchant": 11,
+	"max_hp_bonus": 55,
+	"isActive": false
+  },
+  {
+	"id": "dragon_crown",
+	"equipment_name": "Dragon Crown",
+	"description": "The mind of the wyrm is endless. Greatly raises maximum energy.",
+	"slot": 3,
+	"rarity": 4,
+	"max_enchant": 11,
+	"max_energy_bonus": 4,
+	"isActive": false
+  },
+  {
+	"id": "dragon_wind_boots",
+	"equipment_name": "Dragon Wind Boots",
+	"description": "Ride the storm between heartbeats. Very high chance to deal double damage.",
+	"slot": 4,
+	"rarity": 4,
+	"max_enchant": 11,
+	"crit_chance": 30,
+	"isActive": false
+  },
+
+  { "_comment": "════════ MYSTERY (rarity 5) — key items, not equippable ════════" },
   {
 	"id": "key",
 	"equipment_name": "Key",
 	"description": "A worn brass key. It cannot be equipped — surely it opens something…",
 	"slot": 5,
 	"rarity": 5,
+	"max_enchant": 0,
 	"isActive": false
   }
 ]
