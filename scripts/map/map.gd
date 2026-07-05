@@ -48,19 +48,21 @@ var _merge_sel: Array = []
 
 ## How fast the map follows the mouse while panning.
 ## 1.0 = map moves 1:1 with the cursor; 0.5 = half speed; >1.0 = faster.
-const PAN_SPEED := 0.55
+const PAN_SPEED := 1.0
 ## Breathing room (px) kept around the map edges when panned to a limit.
 ## Panning is only allowed as far as needed to reveal off-screen nodes.
 const PAN_PADDING := 80.0
-
-## Optional tiling background texture. Assign a parchment/map PNG in the editor.
-## If left empty, falls back to the solid colour below.
-@export var background_texture: Texture2D = null
 
 var _pan_offset: Vector2 = Vector2.ZERO
 var _pan_drag_origin: Vector2 = Vector2.ZERO
 var _is_panning: bool = false
 var _map_bounds: Rect2 = Rect2()   # bounding box of all node positions, computed once
+var _bg_mat: ShaderMaterial = null
+
+
+func _process(_delta: float) -> void:
+	# Continuous redraw drives the marching dashes on frontier paths.
+	queue_redraw()
 
 
 func _ready() -> void:
@@ -77,6 +79,7 @@ func _ready() -> void:
 		starter.assign(CardData.starter_deck())
 		GameState.deck = starter
 
+	_add_ink_background()
 	_spawn_uis()
 	_compute_map_bounds()
 	# Start the view centred on the player's frontier, not on START.
@@ -102,8 +105,9 @@ func _ready() -> void:
 
 func _input(event: InputEvent) -> void:
 	# Don't pan while any overlay (CanvasLayer) is open.
+	# The background layer doesn't count — it's always there.
 	for child in get_children():
-		if child is CanvasLayer:
+		if child is CanvasLayer and child.name != "BgLayer":
 			return
 
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_RIGHT:
@@ -130,7 +134,40 @@ func _apply_pan() -> void:
 	for node in _nodes:
 		var ui := _uis[node.id] as MapNodeUI
 		ui.position = node.pos + _pan_offset - ui.size / 2.0
+	if _bg_mat != null:
+		_bg_mat.set_shader_parameter("pan", _pan_offset)
 	queue_redraw()
+
+
+## Procedural sumi-e backdrop on a CanvasLayer BELOW the map canvas, so the
+## connection lines (drawn in _draw) stay on top of it.
+func _add_ink_background() -> void:
+	var layer := CanvasLayer.new()
+	layer.name = "BgLayer"
+	layer.layer = -1
+	add_child(layer)
+
+	var rect := ColorRect.new()
+	rect.set_anchors_preset(Control.PRESET_FULL_RECT)
+	rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_bg_mat = ShaderMaterial.new()
+	_bg_mat.shader = preload("res://shaders/map_ink_bg.gdshader")
+
+	# Simplex-fbm noise for organic cloud shapes (value noise looks square).
+	var noise := FastNoiseLite.new()
+	noise.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
+	noise.fractal_type = FastNoiseLite.FRACTAL_FBM
+	noise.fractal_octaves = 5
+	noise.frequency = 0.006
+	var noise_tex := NoiseTexture2D.new()
+	noise_tex.noise = noise
+	noise_tex.seamless = true
+	noise_tex.width = 512
+	noise_tex.height = 512
+	_bg_mat.set_shader_parameter("noise_tex", noise_tex)
+
+	rect.material = _bg_mat
+	layer.add_child(rect)
 
 
 func _compute_map_bounds() -> void:
@@ -141,7 +178,10 @@ func _compute_map_bounds() -> void:
 	for node in _nodes:
 		mn = mn.min(node.pos)
 		mx = mx.max(node.pos)
-	_map_bounds = Rect2(mn, mx - mn)
+	# Positions are node CENTERS — grow by the largest node's half-size
+	# (boss = RADIUS × 2.6) plus breathing room, so panning to the limit
+	# shows the outermost ring fully instead of cutting it at the edge.
+	_map_bounds = Rect2(mn, mx - mn).grow(MapNodeUI.RADIUS * 2.6 * 0.5 + 30.0)
 
 
 func _clamp_pan() -> void:
@@ -166,24 +206,10 @@ func _clamp_pan() -> void:
 # ── Drawing ───────────────────────────────────────────────────────────────────
 
 func _draw() -> void:
-	# Background — drawn here so it sits behind lines but above nothing.
-	# (Control._draw runs before children, so a ColorRect child would cover lines.)
-	var vp_rect := Rect2(Vector2.ZERO, get_viewport_rect().size)
-	if background_texture != null:
-		draw_texture_rect(background_texture, vp_rect, true)
-	else:
-		draw_rect(vp_rect, Color(0.075, 0.085, 0.115))
-
-	# Faint concentric ring guides echoing the radial layout.
-	var ring_center := Vector2(960.0, 540.0)
-	var max_r := 0.0
-	for node in _nodes:
-		max_r = maxf(max_r, node.pos.distance_to(ring_center))
-	var guide_r := MapGenerator.RING_SPACING
-	while guide_r <= max_r + 40.0:
-		draw_arc(ring_center + _pan_offset, guide_r, 0.0, TAU, 96,
-				Color(1.0, 1.0, 1.0, 0.045), 1.5, true)
-		guide_r += MapGenerator.RING_SPACING
+	# Background lives on the BgLayer CanvasLayer (layer -1), so everything
+	# drawn here renders on top of it. Flat fallback when the shader is off.
+	if _bg_mat == null:
+		draw_rect(Rect2(Vector2.ZERO, get_viewport_rect().size), Color(0.075, 0.085, 0.115))
 
 	# Secret node glint hints — commented out, secret nodes are now fully invisible until discovered.
 	#for node in _nodes:
@@ -208,6 +234,8 @@ func _draw() -> void:
 
 	# Dotted lines only from the visited node that first revealed each reachable node.
 	# Endpoints are inset by node radius so lines stop at the icon edge, not the center.
+	# The dash phase marches toward the unexplored node ("go this way").
+	var dash_phase := Time.get_ticks_msec() / 1000.0 * 14.0
 	for cid in _reachable:
 		if cid not in _reachable_from:
 			continue
@@ -218,25 +246,27 @@ func _draw() -> void:
 		var dir      := (to_pos - from_pos).normalized()
 		var inset    := MapNodeUI.RADIUS + 2.0
 		_draw_dashed_line(from_pos + dir * inset, to_pos - dir * inset,
-				Color(0.80, 0.80, 0.80, 0.80))
+				Color(0.80, 0.80, 0.80, 0.80), 6.0, 5.0, 2.0, dash_phase)
 
 
 func _draw_dashed_line(from: Vector2, to: Vector2, color: Color,
-		dash: float = 6.0, gap: float = 5.0, width: float = 2.0) -> void:
+		dash: float = 6.0, gap: float = 5.0, width: float = 2.0,
+		phase: float = 0.0) -> void:
 	var dir := to - from
 	var total := dir.length()
 	if total < 0.001:
 		return
 	dir /= total
-	var pos := 0.0
+	var pos := -fposmod(phase, dash + gap)
 	var drawing := true
 	while pos < total:
+		var seg_end := pos + (dash if drawing else gap)
 		if drawing:
-			var seg_end := minf(pos + dash, total)
-			draw_line(from + dir * pos, from + dir * seg_end, color, width, true)
-			pos = seg_end
-		else:
-			pos += gap
+			var a := maxf(pos, 0.0)
+			var b := minf(seg_end, total)
+			if b > a:
+				draw_line(from + dir * a, from + dir * b, color, width, true)
+		pos = seg_end
 		drawing = not drawing
 
 
@@ -386,6 +416,10 @@ func _add_hud() -> void:
 	btns.offset_top = 14.0
 	btns.offset_right = -16.0
 	add_child(btns)
+
+	var stats_btn := _hud_button("Stats", "stats", Color(0.55, 0.85, 0.75))
+	stats_btn.pressed.connect(_show_stats_overlay)
+	btns.add_child(stats_btn)
 
 	var inv_btn := _hud_button("Inventory", "inventory", Color(0.76, 0.55, 0.35))
 	inv_btn.pressed.connect(func(): InventoryOverlay.open(self))
@@ -557,6 +591,87 @@ static func _type_name(t: MapNode.Type) -> String:
 	return "?"
 
 
+## Full player stat sheet: what the next battle will actually start with.
+## Mirrors battlefield._apply_equipment (base token stats + gear − curses).
+func _show_stats_overlay() -> void:
+	var parts := _new_overlay()
+	var overlay: CanvasLayer = parts[0]
+	var root: Control = parts[1]
+
+	# Base values from the Token scene defaults — battles start from these.
+	var t := preload("res://scenes/map/token.tscn").instantiate() as Token
+	var base_hp: int = t.max_hp
+	var base_energy: int = t.max_energy
+	var start_energy: int = t.start_energy
+	var regen: int = t.energy_regen
+	t.free()
+
+	# Aggregate equipment exactly like battlefield._apply_equipment.
+	var hp_bonus := 0
+	var energy_bonus := 0
+	var dmg := 0
+	var crit := 0
+	var block := 0
+	for item in GameState.equipment.values():
+		var ed := item as EquipmentData
+		if ed == null:
+			continue
+		hp_bonus     += ed.max_hp_bonus
+		energy_bonus += ed.max_energy_bonus
+		dmg          += ed.damage_bonus
+		crit         += ed.crit_chance
+		block        += ed.block_per_turn
+
+	var cursed_base := maxi(5, base_hp - GameState.max_hp_curse)
+	var max_hp := cursed_base + hp_bonus
+
+	var vbox := EventTemplates.result_flash(root, 300.0)
+	_overlay_title(vbox, "Stats", Color(0.55, 0.85, 0.75), 40)
+
+	var hp_detail := "%d base" % base_hp
+	if hp_bonus > 0:
+		hp_detail += "  +%d gear" % hp_bonus
+	if GameState.max_hp_curse > 0:
+		hp_detail += "  −%d curse" % GameState.max_hp_curse
+	_stats_row(vbox, "Max HP", "%d   (%s)" % [max_hp, hp_detail],
+			Color(0.45, 0.95, 0.55))
+	_stats_row(vbox, "Block per round", "+%d" % block, Color(0.55, 0.78, 1.0))
+	_stats_row(vbox, "Attack damage bonus", "+%d" % dmg, Color(1.0, 0.55, 0.45))
+	_stats_row(vbox, "Crit chance", "%d%%" % crit, Color(1.0, 0.9, 0.4))
+	_stats_row(vbox, "Max energy", "%d   (%d base%s)" % [base_energy + energy_bonus,
+			base_energy, "  +%d gear" % energy_bonus if energy_bonus > 0 else ""],
+			Color(0.5, 0.7, 1.0))
+	_stats_row(vbox, "Battle start energy", "%d,  +%d regen each round" % [
+			start_energy + energy_bonus, regen])
+
+	if GameState.max_hp_curse > 0:
+		_stats_row(vbox, "Active curse", "−%d max HP for this run" % GameState.max_hp_curse,
+				Color(1.0, 0.42, 0.38))
+
+	var spacer := Control.new()
+	spacer.custom_minimum_size = Vector2(0, 10)
+	vbox.add_child(spacer)
+	_overlay_button(vbox, "Close", func(): overlay.queue_free())
+
+
+func _stats_row(vbox: VBoxContainer, label_text: String, value_text: String,
+		value_col: Color = Color(0.92, 0.92, 0.95)) -> void:
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 24)
+	vbox.add_child(row)
+	var l := Label.new()
+	l.text = label_text
+	l.add_theme_font_size_override("font_size", 18)
+	l.modulate = Color(0.62, 0.62, 0.68)
+	l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(l)
+	var v := Label.new()
+	v.text = value_text
+	v.add_theme_font_size_override("font_size", 18)
+	v.modulate = value_col
+	row.add_child(v)
+
+
 func _show_deck_viewer() -> void:
 	if _card_viewer == null or not is_instance_valid(_card_viewer):
 		_card_viewer = CARD_VIEWER_SCENE.instantiate()
@@ -610,72 +725,36 @@ func _show_event_overlay() -> void:
 func _build_event_choice(root: Control, overlay: CanvasLayer) -> void:
 	_clear_children(root)
 
-	var vbox := VBoxContainer.new()
-	vbox.set_anchors_preset(Control.PRESET_CENTER)
-	vbox.offset_left   = -300.0
-	vbox.offset_right  =  300.0
-	vbox.offset_top    = -280.0
-	vbox.offset_bottom =  280.0
-	vbox.alignment = BoxContainer.ALIGNMENT_CENTER
-	vbox.add_theme_constant_override("separation", 18)
-	root.add_child(vbox)
-
-	var title := Label.new()
-	title.text = "Event"
-	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	title.add_theme_font_size_override("font_size", 52)
-	title.modulate = Color(0.85, 0.55, 1.0)
-	vbox.add_child(title)
-
-	var desc := Label.new()
-	desc.text = "A mysterious stranger offers his services."
-	desc.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	desc.add_theme_font_size_override("font_size", 19)
-	desc.modulate = Color(0.78, 0.78, 0.78)
-	vbox.add_child(desc)
-
-	var spacer := Control.new()
-	spacer.custom_minimum_size = Vector2(0, 8)
-	vbox.add_child(spacer)
+	# Format C: choices dealt as cards.
+	var row := EventTemplates.choice_frame(root, "Event",
+			"A mysterious stranger offers his services. Which fate will you draw?",
+			Color(0.85, 0.55, 1.0))
 
 	var remove_cost := REMOVE_BASE_COST * (GameState.cards_removed + 1)
-	var remove_btn := Button.new()
-	remove_btn.text = "Remove a Card  (%d coins)" % remove_cost
-	remove_btn.add_theme_font_size_override("font_size", 22)
-	remove_btn.custom_minimum_size = Vector2(0, 54)
-	remove_btn.pressed.connect(func():
-		_build_remove_select(root, overlay)
-	)
-	vbox.add_child(remove_btn)
+	var remove_card := EventTemplates.choice_card("Remove a Card",
+			"Erase one technique from your deck.\n\n%d coins" % remove_cost,
+			Color(0.95, 0.40, 0.40), load("res://assets/ui/icon_discard_8.png"))
+	remove_card.pressed.connect(func(): _build_remove_select(root, overlay))
+	row.add_child(remove_card)
 
-	var scavenge_btn := Button.new()
-	scavenge_btn.text = "Scavenge Ruins  (find random equipment)"
-	scavenge_btn.add_theme_font_size_override("font_size", 22)
-	scavenge_btn.custom_minimum_size = Vector2(0, 54)
-	scavenge_btn.pressed.connect(func():
-		_build_scavenge_result(root, overlay)
-	)
-	vbox.add_child(scavenge_btn)
+	var scavenge_card := EventTemplates.choice_card("Scavenge Ruins",
+			"Search the rubble for equipment,\nscrolls… or something stranger.",
+			Color(0.90, 0.75, 0.25), load("res://assets/map/nodes/treasure.png"))
+	scavenge_card.pressed.connect(func(): _build_scavenge_result(root, overlay))
+	row.add_child(scavenge_card)
 
-	var leave_btn := Button.new()
-	leave_btn.text = "Leave"
-	leave_btn.add_theme_font_size_override("font_size", 18)
-	leave_btn.modulate = Color(0.65, 0.65, 0.65)
-	leave_btn.pressed.connect(func(): overlay.queue_free())
-	vbox.add_child(leave_btn)
+	var leave_card := EventTemplates.choice_card("Leave",
+			"Walk away.\nSome fates are better unturned.",
+			Color(0.55, 0.55, 0.60))
+	leave_card.pressed.connect(func(): overlay.queue_free())
+	row.add_child(leave_card)
 
 
 func _build_forge_select(root: Control, overlay: CanvasLayer) -> void:
 	_clear_children(root)
 
-	var vbox := VBoxContainer.new()
-	vbox.set_anchors_preset(Control.PRESET_FULL_RECT)
-	vbox.offset_left   = 80.0
-	vbox.offset_right  = -80.0
-	vbox.offset_top    = 50.0
-	vbox.offset_bottom = -50.0
-	vbox.add_theme_constant_override("separation", 10)
-	root.add_child(vbox)
+	# Format D: workbench list.
+	var vbox := EventTemplates.merchant_split(root, "forge", "res://assets/map/nodes/forge.png")
 
 	var title := Label.new()
 	title.text = "Forge a Card"
@@ -748,15 +827,7 @@ func _build_forge_select(root: Control, overlay: CanvasLayer) -> void:
 func _build_forge_result(card: CardData, succeeded: bool, root: Control, overlay: CanvasLayer) -> void:
 	_clear_children(root)
 
-	var vbox := VBoxContainer.new()
-	vbox.set_anchors_preset(Control.PRESET_CENTER)
-	vbox.offset_left   = -360.0
-	vbox.offset_right  =  360.0
-	vbox.offset_top    = -180.0
-	vbox.offset_bottom =  180.0
-	vbox.alignment = BoxContainer.ALIGNMENT_CENTER
-	vbox.add_theme_constant_override("separation", 22)
-	root.add_child(vbox)
+	var vbox := EventTemplates.result_flash(root, 180.0)
 
 	var result_lbl := Label.new()
 	result_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -800,14 +871,8 @@ func _build_remove_select(root: Control, overlay: CanvasLayer) -> void:
 	var can_afford  := GameState.coins >= remove_cost
 	var safe_to_remove := GameState.deck.size() > 1
 
-	var vbox := VBoxContainer.new()
-	vbox.set_anchors_preset(Control.PRESET_FULL_RECT)
-	vbox.offset_left   = 80.0
-	vbox.offset_right  = -80.0
-	vbox.offset_top    = 50.0
-	vbox.offset_bottom = -50.0
-	vbox.add_theme_constant_override("separation", 10)
-	root.add_child(vbox)
+	# Format D: workbench list.
+	var vbox := EventTemplates.merchant_split(root, "event", "res://assets/map/nodes/event.png")
 
 	var title := Label.new()
 	title.text = "Remove a Card"
@@ -918,15 +983,7 @@ func _build_scavenge_result(root: Control, overlay: CanvasLayer) -> void:
 	else:
 		ed = EquipmentData.random_drop()
 
-	var vbox := VBoxContainer.new()
-	vbox.set_anchors_preset(Control.PRESET_CENTER)
-	vbox.offset_left   = -360.0
-	vbox.offset_right  =  360.0
-	vbox.offset_top    = -240.0
-	vbox.offset_bottom =  240.0
-	vbox.alignment = BoxContainer.ALIGNMENT_CENTER
-	vbox.add_theme_constant_override("separation", 16)
-	root.add_child(vbox)
+	var vbox := EventTemplates.result_flash(root, 240.0)
 
 	var title := Label.new()
 	title.text = "You found equipment!" if EquipmentData.is_equippable(ed) else "You found an item!"
@@ -935,36 +992,13 @@ func _build_scavenge_result(root: Control, overlay: CanvasLayer) -> void:
 	title.modulate = Color(0.9, 0.75, 0.2)
 	vbox.add_child(title)
 
-	var slot_labels := {0: "Weapon", 1: "Offhand", 2: "Chest", 3: "Helm", 4: "Shoes", 5: "Item"}
-	var slot_colors := {
-		0: Color(0.90, 0.50, 0.20),
-		1: Color(0.25, 0.56, 0.88),
-		2: Color(0.25, 0.75, 0.45),
-		3: Color(0.65, 0.25, 0.88),
-		4: Color(0.20, 0.80, 0.85),
-		5: Color(0.85, 0.75, 0.35),
-	}
-	var slot_color: Color = slot_colors.get(ed.slot, Color(0.7, 0.7, 0.7))
-	var rarity_col := EquipmentData.rarity_color(ed.rarity)
-
-	var rarity_lbl := Label.new()
-	rarity_lbl.text = EquipmentData.rarity_name(ed.rarity)
-	rarity_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	rarity_lbl.add_theme_font_size_override("font_size", 16)
-	rarity_lbl.modulate = rarity_col
-	vbox.add_child(rarity_lbl)
-
-	var type_lbl := Label.new()
-	type_lbl.text = slot_labels.get(ed.slot, "Equipment")
-	type_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	type_lbl.add_theme_font_size_override("font_size", 16)
-	type_lbl.modulate = slot_color
-	vbox.add_child(type_lbl)
+	_overlay_item_tile(vbox, ed)
 
 	var name_lbl := Label.new()
 	name_lbl.text = ed.equipment_name
 	name_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	name_lbl.add_theme_font_size_override("font_size", 30)
+	name_lbl.add_theme_font_size_override("font_size", 28)
+	name_lbl.modulate = EquipmentData.rarity_color(ed.rarity)
 	vbox.add_child(name_lbl)
 
 	var stat_lbl := Label.new()
@@ -988,32 +1022,15 @@ func _build_scavenge_result(root: Control, overlay: CanvasLayer) -> void:
 	vbox.add_child(spacer)
 
 	var take_btn := Button.new()
-	take_btn.text = "Take it"
+	take_btn.text = "Add to inventory"
 	take_btn.add_theme_font_size_override("font_size", 20)
 	take_btn.custom_minimum_size = Vector2(160, 0)
 	take_btn.pressed.connect(func():
-		if EquipmentData.is_equippable(ed):
-			var old := GameState.equipment.get(ed.slot) as EquipmentData
-			if old != null:
-				GameState.inventory.append(old)
-			GameState.equipment[ed.slot] = ed
-		else:
-			GameState.inventory.append(ed)
+		GameState.inventory.append(ed)
 		_close_current_node()
 		overlay.queue_free()
 	)
 	vbox.add_child(take_btn)
-
-	if EquipmentData.is_equippable(ed):
-		var stash_btn := Button.new()
-		stash_btn.text = "Add to inventory"
-		stash_btn.add_theme_font_size_override("font_size", 17)
-		stash_btn.pressed.connect(func():
-			GameState.inventory.append(ed)
-			_close_current_node()
-			overlay.queue_free()
-		)
-		vbox.add_child(stash_btn)
 
 	var leave_btn := Button.new()
 	leave_btn.text = "Leave it"
@@ -1055,13 +1072,7 @@ func _build_merge_result(new_item, success: bool, src_rarity: int,
 		root: Control, overlay: CanvasLayer) -> void:
 	_clear_children(root)
 
-	var vbox := VBoxContainer.new()
-	vbox.set_anchors_preset(Control.PRESET_CENTER)
-	vbox.offset_left   = -360.0; vbox.offset_right  = 360.0
-	vbox.offset_top    = -200.0; vbox.offset_bottom = 200.0
-	vbox.alignment = BoxContainer.ALIGNMENT_CENTER
-	vbox.add_theme_constant_override("separation", 18)
-	root.add_child(vbox)
+	var vbox := EventTemplates.result_flash(root, 200.0)
 
 	var result_lbl := Label.new()
 	result_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -1076,6 +1087,7 @@ func _build_merge_result(new_item, success: bool, src_rarity: int,
 
 	if success and new_item != null:
 		var ed := new_item as EquipmentData
+		_overlay_item_tile(vbox, ed)
 		var detail := Label.new()
 		detail.text = "%s  [%s]  %s" % [
 			ed.equipment_name,
@@ -1130,13 +1142,7 @@ func _build_scroll_result(sd: ScrollData, item_name: String, success: bool, dest
 		root: Control, overlay: CanvasLayer) -> void:
 	_clear_children(root)
 
-	var vbox := VBoxContainer.new()
-	vbox.set_anchors_preset(Control.PRESET_CENTER)
-	vbox.offset_left   = -360.0; vbox.offset_right  = 360.0
-	vbox.offset_top    = -200.0; vbox.offset_bottom = 200.0
-	vbox.alignment = BoxContainer.ALIGNMENT_CENTER
-	vbox.add_theme_constant_override("separation", 18)
-	root.add_child(vbox)
+	var vbox := EventTemplates.result_flash(root, 200.0)
 
 	var result_lbl := Label.new()
 	result_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -1182,13 +1188,7 @@ func _build_scavenge_scroll_result(root: Control, overlay: CanvasLayer) -> void:
 	pool.shuffle()
 	var sd: ScrollData = (pool[0] as ScrollData).duplicate()
 
-	var vbox := VBoxContainer.new()
-	vbox.set_anchors_preset(Control.PRESET_CENTER)
-	vbox.offset_left   = -360.0; vbox.offset_right  = 360.0
-	vbox.offset_top    = -240.0; vbox.offset_bottom = 240.0
-	vbox.alignment = BoxContainer.ALIGNMENT_CENTER
-	vbox.add_theme_constant_override("separation", 16)
-	root.add_child(vbox)
+	var vbox := EventTemplates.result_flash(root, 240.0)
 
 	var title := Label.new()
 	title.text = "You found a scroll!"
@@ -1196,6 +1196,8 @@ func _build_scavenge_scroll_result(root: Control, overlay: CanvasLayer) -> void:
 	title.add_theme_font_size_override("font_size", 36)
 	title.modulate = sd.stat_color()
 	vbox.add_child(title)
+
+	_overlay_item_tile(vbox, sd)
 
 	var name_lbl := Label.new()
 	name_lbl.text = sd.scroll_name
@@ -1218,7 +1220,7 @@ func _build_scavenge_scroll_result(root: Control, overlay: CanvasLayer) -> void:
 	vbox.add_child(spacer)
 
 	var take_btn := Button.new()
-	take_btn.text = "Take it"
+	take_btn.text = "Add to inventory"
 	take_btn.add_theme_font_size_override("font_size", 20)
 	take_btn.custom_minimum_size = Vector2(160, 0)
 	take_btn.pressed.connect(func():
@@ -1258,21 +1260,9 @@ func _show_wizard_overlay() -> void:
 func _build_wizard_view(root: Control, overlay: CanvasLayer) -> void:
 	_clear_children(root)
 
-	var vbox := VBoxContainer.new()
-	vbox.set_anchors_preset(Control.PRESET_FULL_RECT)
-	vbox.offset_left   = 80.0
-	vbox.offset_right  = -80.0
-	vbox.offset_top    = 50.0
-	vbox.offset_bottom = -50.0
-	vbox.add_theme_constant_override("separation", 10)
-	root.add_child(vbox)
-
-	var title := Label.new()
-	title.text = "The Wizard"
-	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	title.add_theme_font_size_override("font_size", 48)
-	title.modulate = Color(0.45, 0.88, 0.95)
-	vbox.add_child(title)
+	# Format B: the wizard speaks.
+	var vbox := EventTemplates.dialogue_split(root, "wizard", "The Wizard",
+			Color(0.45, 0.88, 0.95), "res://assets/map/nodes/rest.png")
 
 	var desc := Label.new()
 	desc.text = "\"I can erase one technique from your memory. Choose wisely.\""
@@ -1280,8 +1270,6 @@ func _build_wizard_view(root: Control, overlay: CanvasLayer) -> void:
 	desc.add_theme_font_size_override("font_size", 18)
 	desc.modulate = Color(0.72, 0.72, 0.72)
 	vbox.add_child(desc)
-
-	vbox.add_child(HSeparator.new())
 
 	var safe_to_remove := GameState.deck.size() > 1
 
@@ -1336,15 +1324,7 @@ func _build_wizard_view(root: Control, overlay: CanvasLayer) -> void:
 func _build_wizard_done(card_name: String, root: Control, overlay: CanvasLayer) -> void:
 	_clear_children(root)
 
-	var vbox := VBoxContainer.new()
-	vbox.set_anchors_preset(Control.PRESET_CENTER)
-	vbox.offset_left   = -360.0
-	vbox.offset_right  =  360.0
-	vbox.offset_top    = -160.0
-	vbox.offset_bottom =  160.0
-	vbox.alignment = BoxContainer.ALIGNMENT_CENTER
-	vbox.add_theme_constant_override("separation", 22)
-	root.add_child(vbox)
+	var vbox := EventTemplates.result_flash(root, 160.0)
 
 	var result := Label.new()
 	result.text = "Forgotten."
@@ -1413,20 +1393,8 @@ func _build_shop_view(stock_equip: Array, stock_scrolls: Array,
 		map_node: MapNode, root: Control, overlay: CanvasLayer) -> void:
 	_clear_children(root)
 
-	var panel := Panel.new()
-	panel.set_anchors_preset(Control.PRESET_CENTER)
-	panel.offset_left   = -500.0
-	panel.offset_right  =  500.0
-	panel.offset_top    = -380.0
-	panel.offset_bottom =  380.0
-	root.add_child(panel)
-
-	var outer := VBoxContainer.new()
-	outer.set_anchors_preset(Control.PRESET_FULL_RECT)
-	outer.offset_left = 18; outer.offset_right  = -18
-	outer.offset_top  = 14; outer.offset_bottom = -14
-	outer.add_theme_constant_override("separation", 8)
-	panel.add_child(outer)
+	# Format D: merchant counter.
+	var outer := EventTemplates.merchant_split(root, "merchant", "res://assets/map/nodes/shop.png")
 
 	# Header
 	var hdr := HBoxContainer.new()
@@ -1448,8 +1416,6 @@ func _build_shop_view(stock_equip: Array, stock_scrolls: Array,
 	outer.add_child(HSeparator.new())
 
 	# Equipment section
-	var slot_names := {0: "Weapon", 1: "Offhand", 2: "Chest", 3: "Helm", 4: "Shoes"}
-
 	outer.add_child(_inv_section_label("EQUIPMENT"))
 
 	if stock_equip.is_empty():
@@ -1459,44 +1425,26 @@ func _build_shop_view(stock_equip: Array, stock_scrolls: Array,
 		sold_lbl.add_theme_font_size_override("font_size", 14)
 		outer.add_child(sold_lbl)
 	else:
+		# Tile grid: click an item to buy it, price shown under each tile.
+		var eq_grid := HBoxContainer.new()
+		eq_grid.alignment = BoxContainer.ALIGNMENT_CENTER
+		eq_grid.add_theme_constant_override("separation", 28)
+		outer.add_child(eq_grid)
 		for ed in stock_equip:
 			var price: int = SHOP_EQUIP_PRICES.get(ed.rarity, 1)
 			var can_afford := GameState.coins >= price
 
-			var row := HBoxContainer.new()
-			row.add_theme_constant_override("separation", 10)
-			outer.add_child(row)
+			var cell := VBoxContainer.new()
+			cell.add_theme_constant_override("separation", 4)
+			eq_grid.add_child(cell)
 
-			var info := Label.new()
-			info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-			info.add_theme_font_size_override("font_size", 15)
-			info.text = "[%s]  %s%s  [%s]  %s" % [
-				slot_names.get(ed.slot, "?"),
-				ed.equipment_name,
-				_equipment_enchant_tag(ed),
-				EquipmentData.rarity_name(ed.rarity),
-				_equipment_stat_summary(ed),
-			]
-			var base_col := EquipmentData.rarity_color(ed.rarity)
-			info.modulate = base_col if can_afford else base_col * Color(0.50, 0.50, 0.50, 1.0)
-			info.tooltip_text = _equipment_tooltip(ed)
-			info.mouse_filter = Control.MOUSE_FILTER_PASS
-			row.add_child(info)
-
-			var price_lbl := Label.new()
-			price_lbl.text = "%dg" % price
-			price_lbl.add_theme_font_size_override("font_size", 14)
-			price_lbl.modulate = Color(1.0, 0.85, 0.1) if can_afford else Color(0.45, 0.45, 0.45)
-			price_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-			row.add_child(price_lbl)
-
-			var buy_btn := Button.new()
-			buy_btn.text = "Buy"
-			buy_btn.add_theme_font_size_override("font_size", 14)
-			buy_btn.disabled = not can_afford
+			var tile := InventoryOverlay.make_tile(ed, 110.0)
+			tile.disabled = not can_afford
+			if not can_afford:
+				tile.modulate = Color(0.55, 0.55, 0.55)
 			var cap_ed: EquipmentData = ed
 			var cap_price: int = price
-			buy_btn.pressed.connect(func():
+			tile.pressed.connect(func():
 				GameState.coins -= cap_price
 				GameState.inventory.append(cap_ed)
 				stock_equip.erase(cap_ed)
@@ -1507,7 +1455,14 @@ func _build_shop_view(stock_equip: Array, stock_scrolls: Array,
 				else:
 					_build_shop_view(stock_equip, stock_scrolls, map_node, root, overlay)
 			)
-			row.add_child(buy_btn)
+			cell.add_child(tile)
+
+			var price_lbl := Label.new()
+			price_lbl.text = "%dg" % price
+			price_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+			price_lbl.add_theme_font_size_override("font_size", 16)
+			price_lbl.modulate = Color(1.0, 0.85, 0.1) if can_afford else Color(0.45, 0.45, 0.45)
+			cell.add_child(price_lbl)
 
 	outer.add_child(HSeparator.new())
 
@@ -1521,41 +1476,24 @@ func _build_shop_view(stock_equip: Array, stock_scrolls: Array,
 		sold_lbl.add_theme_font_size_override("font_size", 14)
 		outer.add_child(sold_lbl)
 	else:
+		var sc_grid := HBoxContainer.new()
+		sc_grid.alignment = BoxContainer.ALIGNMENT_CENTER
+		sc_grid.add_theme_constant_override("separation", 28)
+		outer.add_child(sc_grid)
 		for scroll in stock_scrolls:
 			var sd := scroll as ScrollData
 			var can_afford := GameState.coins >= SHOP_SCROLL_PRICE
 
-			var row := HBoxContainer.new()
-			row.add_theme_constant_override("separation", 10)
-			outer.add_child(row)
+			var cell := VBoxContainer.new()
+			cell.add_theme_constant_override("separation", 4)
+			sc_grid.add_child(cell)
 
-			var info := Label.new()
-			info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-			info.add_theme_font_size_override("font_size", 15)
-			info.text = "%s  +%d %s  |  %d%% success / %d%% destroy on fail" % [
-				sd.scroll_name,
-				sd.boost_amount,
-				sd.stat_label(),
-				sd.success_chance,
-				sd.destroy_chance,
-			]
-			var base_col := sd.stat_color()
-			info.modulate = base_col if can_afford else base_col * Color(0.50, 0.50, 0.50, 1.0)
-			row.add_child(info)
-
-			var price_lbl := Label.new()
-			price_lbl.text = "%dg" % SHOP_SCROLL_PRICE
-			price_lbl.add_theme_font_size_override("font_size", 14)
-			price_lbl.modulate = Color(1.0, 0.85, 0.1) if can_afford else Color(0.45, 0.45, 0.45)
-			price_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-			row.add_child(price_lbl)
-
-			var buy_btn := Button.new()
-			buy_btn.text = "Buy"
-			buy_btn.add_theme_font_size_override("font_size", 14)
-			buy_btn.disabled = not can_afford
+			var tile := InventoryOverlay.make_scroll_tile(sd, 110.0)
+			tile.disabled = not can_afford
+			if not can_afford:
+				tile.modulate = Color(0.55, 0.55, 0.55)
 			var cap_sd: ScrollData = sd
-			buy_btn.pressed.connect(func():
+			tile.pressed.connect(func():
 				GameState.coins -= SHOP_SCROLL_PRICE
 				GameState.scrolls.append(cap_sd)
 				stock_scrolls.erase(cap_sd)
@@ -1566,7 +1504,14 @@ func _build_shop_view(stock_equip: Array, stock_scrolls: Array,
 				else:
 					_build_shop_view(stock_equip, stock_scrolls, map_node, root, overlay)
 			)
-			row.add_child(buy_btn)
+			cell.add_child(tile)
+
+			var price_lbl := Label.new()
+			price_lbl.text = "%dg" % SHOP_SCROLL_PRICE
+			price_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+			price_lbl.add_theme_font_size_override("font_size", 16)
+			price_lbl.modulate = Color(1.0, 0.85, 0.1) if can_afford else Color(0.45, 0.45, 0.45)
+			cell.add_child(price_lbl)
 
 	outer.add_child(HSeparator.new())
 
@@ -1601,82 +1546,44 @@ func _show_forge_overlay() -> void:
 func _build_forge_menu(root: Control, overlay: CanvasLayer) -> void:
 	_clear_children(root)
 
-	var vbox := VBoxContainer.new()
-	vbox.set_anchors_preset(Control.PRESET_CENTER)
-	vbox.offset_left   = -300.0
-	vbox.offset_right  =  300.0
-	vbox.offset_top    = -280.0
-	vbox.offset_bottom =  280.0
-	vbox.alignment = BoxContainer.ALIGNMENT_CENTER
-	vbox.add_theme_constant_override("separation", 18)
-	root.add_child(vbox)
+	# Format C: choices dealt as cards.
+	var row := EventTemplates.choice_frame(root, "The Forge",
+			"The blacksmith's hammer never rests.", Color(1.0, 0.62, 0.25))
 
-	var title := Label.new()
-	title.text = "The Forge"
-	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	title.add_theme_font_size_override("font_size", 52)
-	title.modulate = Color(1.0, 0.62, 0.25)
-	vbox.add_child(title)
+	var forge_card := EventTemplates.choice_card("Forge a Card",
+			"+2 damage on success.\nCoins spent either way.\n\n%d+ coins" % FORGE_BASE_COST,
+			Color(1.0, 0.62, 0.25), load("res://assets/map/nodes/forge.png"))
+	forge_card.pressed.connect(func(): _build_forge_select(root, overlay))
+	row.add_child(forge_card)
 
-	var desc := Label.new()
-	desc.text = "The blacksmith's hammer never rests."
-	desc.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	desc.add_theme_font_size_override("font_size", 19)
-	desc.modulate = Color(0.78, 0.78, 0.78)
-	vbox.add_child(desc)
+	var scroll_card := EventTemplates.choice_card("Use a Scroll",
+			"Apply a scroll's power\nto a piece of equipment.\n\n%d owned" % GameState.scrolls.size(),
+			Color(0.75, 0.55, 0.95), load("res://assets/map/nodes/enchant.png"))
+	scroll_card.disabled = GameState.scrolls.is_empty()
+	scroll_card.pressed.connect(func(): _build_scroll_select(root, overlay))
+	row.add_child(scroll_card)
 
-	var spacer := Control.new()
-	spacer.custom_minimum_size = Vector2(0, 8)
-	vbox.add_child(spacer)
-
-	var forge_btn := Button.new()
-	forge_btn.text = "Forge a Card  (%d+ coins)" % FORGE_BASE_COST
-	forge_btn.add_theme_font_size_override("font_size", 22)
-	forge_btn.custom_minimum_size = Vector2(0, 54)
-	forge_btn.pressed.connect(func():
-		_build_forge_select(root, overlay)
-	)
-	vbox.add_child(forge_btn)
-
-	var scroll_btn := Button.new()
-	scroll_btn.text = "Use a Scroll  (%d owned)" % GameState.scrolls.size()
-	scroll_btn.add_theme_font_size_override("font_size", 22)
-	scroll_btn.custom_minimum_size = Vector2(0, 54)
-	scroll_btn.disabled = GameState.scrolls.is_empty()
-	scroll_btn.pressed.connect(func():
-		_build_scroll_select(root, overlay)
-	)
-	vbox.add_child(scroll_btn)
-
-	var merge_btn := Button.new()
-	merge_btn.text = "Merge Items  (3 same rarity → next tier)"
-	merge_btn.add_theme_font_size_override("font_size", 22)
-	merge_btn.custom_minimum_size = Vector2(0, 54)
-	merge_btn.pressed.connect(func():
+	var merge_card := EventTemplates.choice_card("Merge Items",
+			"3 items of the same rarity\nbecome one of the next tier.",
+			Color(0.35, 0.75, 0.95), load("res://assets/ui/icon_three_card.png"))
+	merge_card.pressed.connect(func():
 		_merge_sel.clear()
 		_build_merge_view(root, overlay)
 	)
-	vbox.add_child(merge_btn)
+	row.add_child(merge_card)
 
-	var leave_btn := Button.new()
-	leave_btn.text = "Leave"
-	leave_btn.add_theme_font_size_override("font_size", 18)
-	leave_btn.modulate = Color(0.65, 0.65, 0.65)
-	leave_btn.pressed.connect(func(): overlay.queue_free())
-	vbox.add_child(leave_btn)
+	var leave_card := EventTemplates.choice_card("Leave",
+			"The hammer can wait.",
+			Color(0.55, 0.55, 0.60))
+	leave_card.pressed.connect(func(): overlay.queue_free())
+	row.add_child(leave_card)
 
 
 func _build_scroll_select(root: Control, overlay: CanvasLayer) -> void:
 	_clear_children(root)
 
-	var vbox := VBoxContainer.new()
-	vbox.set_anchors_preset(Control.PRESET_FULL_RECT)
-	vbox.offset_left   = 80.0
-	vbox.offset_right  = -80.0
-	vbox.offset_top    = 40.0
-	vbox.offset_bottom = -40.0
-	vbox.add_theme_constant_override("separation", 10)
-	root.add_child(vbox)
+	# Format D: workbench list.
+	var vbox := EventTemplates.merchant_split(root, "forge", "res://assets/map/nodes/forge.png")
 
 	var title := Label.new()
 	title.text = "Use a Scroll"
@@ -1813,14 +1720,8 @@ func _build_merge_view(root: Control, overlay: CanvasLayer) -> void:
 	# Sanitise merge selection — items may have been removed by prior actions.
 	_merge_sel = _merge_sel.filter(func(i): return GameState.inventory.has(i))
 
-	var vbox := VBoxContainer.new()
-	vbox.set_anchors_preset(Control.PRESET_FULL_RECT)
-	vbox.offset_left   = 80.0
-	vbox.offset_right  = -80.0
-	vbox.offset_top    = 50.0
-	vbox.offset_bottom = -50.0
-	vbox.add_theme_constant_override("separation", 10)
-	root.add_child(vbox)
+	# Format D: workbench list.
+	var vbox := EventTemplates.merchant_split(root, "forge", "res://assets/map/nodes/forge.png")
 
 	var title := Label.new()
 	title.text = "Merge Items"
@@ -1934,20 +1835,8 @@ func _show_enchant_overlay(map_node: MapNode) -> void:
 func _build_enchant_select(map_node: MapNode, root: Control, overlay: CanvasLayer) -> void:
 	_clear_children(root)
 
-	var panel := Panel.new()
-	panel.set_anchors_preset(Control.PRESET_CENTER)
-	panel.offset_left   = -490.0
-	panel.offset_right  =  490.0
-	panel.offset_top    = -360.0
-	panel.offset_bottom =  360.0
-	root.add_child(panel)
-
-	var outer := VBoxContainer.new()
-	outer.set_anchors_preset(Control.PRESET_FULL_RECT)
-	outer.offset_left = 18; outer.offset_right  = -18
-	outer.offset_top  = 14; outer.offset_bottom = -14
-	outer.add_theme_constant_override("separation", 8)
-	panel.add_child(outer)
+	# Format D: workbench list.
+	var outer := EventTemplates.merchant_split(root, "enchant", "res://assets/map/nodes/enchant.png")
 
 	# Header
 	var title := Label.new()
@@ -2002,11 +1891,15 @@ func _build_enchant_select(map_node: MapNode, root: Control, overlay: CanvasLaye
 		cv.add_child(empty_lbl)
 	else:
 		cv.add_child(_inv_section_label("EQUIPPED"))
+		var eq_grid := HFlowContainer.new()
+		eq_grid.add_theme_constant_override("h_separation", 22)
+		eq_grid.add_theme_constant_override("v_separation", 14)
+		cv.add_child(eq_grid)
 		var has_equipped := false
 		for slot_int in [0, 1, 2, 3, 4]:
 			var ed := GameState.equipment.get(slot_int) as EquipmentData
 			if ed != null:
-				cv.add_child(_build_enchant_row(ed, map_node, root, overlay))
+				eq_grid.add_child(_build_enchant_cell(ed, map_node, root, overlay))
 				has_equipped = true
 		if not has_equipped:
 			var none_lbl := Label.new()
@@ -2020,8 +1913,12 @@ func _build_enchant_select(map_node: MapNode, root: Control, overlay: CanvasLaye
 		if not inv_equip.is_empty():
 			cv.add_child(HSeparator.new())
 			cv.add_child(_inv_section_label("INVENTORY"))
+			var inv_grid := HFlowContainer.new()
+			inv_grid.add_theme_constant_override("h_separation", 22)
+			inv_grid.add_theme_constant_override("v_separation", 14)
+			cv.add_child(inv_grid)
 			for item in inv_equip:
-				cv.add_child(_build_enchant_row(item as EquipmentData, map_node, root, overlay))
+				inv_grid.add_child(_build_enchant_cell(item as EquipmentData, map_node, root, overlay))
 
 	outer.add_child(HSeparator.new())
 
@@ -2033,39 +1930,24 @@ func _build_enchant_select(map_node: MapNode, root: Control, overlay: CanvasLaye
 	outer.add_child(leave_btn)
 
 
-func _build_enchant_row(ed: EquipmentData, map_node: MapNode, root: Control, overlay: CanvasLayer) -> HBoxContainer:
+## One enchant candidate: clickable item tile with cost | success rate below.
+func _build_enchant_cell(ed: EquipmentData, map_node: MapNode, root: Control, overlay: CanvasLayer) -> VBoxContainer:
 	var cost := ENCHANT_BASE_COST * (ed.enchant_level + 1)
 	var rate: int = ENCHANT_SUCCESS_RATES[mini(ed.enchant_level, ENCHANT_SUCCESS_RATES.size() - 1)]
 	var can_afford := GameState.coins >= cost
 	var maxed := ed.enchant_level >= ed.max_enchant
 
-	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 10)
+	var cell := VBoxContainer.new()
+	cell.add_theme_constant_override("separation", 4)
 
-	var info := Label.new()
-	info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	info.add_theme_font_size_override("font_size", 14)
-	info.text = "%s ✦+%d  [%s]  %s  →  %s" % [
-		ed.equipment_name,
-		ed.enchant_level,
-		EquipmentData.rarity_name(ed.rarity),
-		_equipment_stat_summary(ed),
-		"MAX" if maxed else "%dg  |  %d%%" % [cost, rate],
-	]
-	var base_col := EquipmentData.rarity_color(ed.rarity)
-	info.modulate = base_col if (can_afford and not maxed) else base_col * Color(0.55, 0.55, 0.55, 1.0)
-	info.tooltip_text = _equipment_tooltip(ed)
-	info.mouse_filter = Control.MOUSE_FILTER_PASS
-	row.add_child(info)
-
-	var enchant_btn := Button.new()
-	enchant_btn.text = "MAX" if maxed else "Enchant"
-	enchant_btn.add_theme_font_size_override("font_size", 13)
-	enchant_btn.disabled = maxed or not can_afford
+	var tile := InventoryOverlay.make_tile(ed, 96.0)
+	tile.disabled = maxed or not can_afford
+	if tile.disabled:
+		tile.modulate = Color(0.55, 0.55, 0.55)
 	var cap_ed := ed
 	var cap_cost := cost
 	var cap_rate := rate
-	enchant_btn.pressed.connect(func():
+	tile.pressed.connect(func():
 		GameState.coins -= cap_cost
 		_refresh_coins_label()
 		var succeeded := (randi() % 100) < cap_rate
@@ -2073,8 +1955,19 @@ func _build_enchant_row(ed: EquipmentData, map_node: MapNode, root: Control, ove
 			_apply_enchant(cap_ed)
 		_build_enchant_result(cap_ed, succeeded, map_node, root, overlay)
 	)
-	row.add_child(enchant_btn)
-	return row
+	cell.add_child(tile)
+
+	var info := Label.new()
+	info.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	info.add_theme_font_size_override("font_size", 13)
+	if maxed:
+		info.text = "MAX"
+		info.modulate = Color(0.60, 0.60, 0.60)
+	else:
+		info.text = "%dg | %d%%" % [cost, rate]
+		info.modulate = Color(1.0, 0.85, 0.1) if can_afford else Color(0.45, 0.45, 0.45)
+	cell.add_child(info)
+	return cell
 
 
 func _apply_enchant(ed: EquipmentData) -> void:
@@ -2103,13 +1996,7 @@ func _build_enchant_result(ed: EquipmentData, succeeded: bool,
 		_refresh()
 		queue_redraw()
 
-	var vbox := VBoxContainer.new()
-	vbox.set_anchors_preset(Control.PRESET_CENTER)
-	vbox.offset_left   = -400.0; vbox.offset_right  =  400.0
-	vbox.offset_top    = -220.0; vbox.offset_bottom =  220.0
-	vbox.alignment = BoxContainer.ALIGNMENT_CENTER
-	vbox.add_theme_constant_override("separation", 22)
-	root.add_child(vbox)
+	var vbox := EventTemplates.result_flash(root, 220.0)
 
 	var result_lbl := Label.new()
 	result_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -2218,11 +2105,24 @@ func _overlay_button(vbox: VBoxContainer, text: String, on_press: Callable,
 	return btn
 
 
+## Centered item tile (icon, rarity border, instant tooltip) for reward
+## screens — the visual "item button" shown instead of plain text lines.
+func _overlay_item_tile(vbox: VBoxContainer, item, tile_size: float = 132.0) -> void:
+	var center := CenterContainer.new()
+	vbox.add_child(center)
+	var tile: Button
+	if item is ScrollData:
+		tile = InventoryOverlay.make_scroll_tile(item, tile_size)
+	else:
+		tile = InventoryOverlay.make_tile(item, tile_size)
+	center.add_child(tile)
+
+
 ## Simple result screen: title + detail + Continue.
 func _build_simple_result(title: String, title_col: Color, detail: String,
 		root: Control, overlay: CanvasLayer) -> void:
 	_clear_children(root)
-	var vbox := _overlay_vbox(root, 180.0)
+	var vbox := EventTemplates.result_flash(root, 180.0)
 	_overlay_title(vbox, title, title_col)
 	_overlay_text(vbox, detail, 20)
 	_overlay_text(vbox, "Coins: %d" % GameState.coins, 16, Color(1.0, 0.85, 0.1))
@@ -2233,24 +2133,17 @@ func _build_simple_result(title: String, title_col: Color, detail: String,
 func _build_found_equipment(ed: EquipmentData, title: String,
 		root: Control, overlay: CanvasLayer) -> void:
 	_clear_children(root)
-	var vbox := _overlay_vbox(root)
+	var vbox := EventTemplates.result_flash(root)
 	_overlay_title(vbox, title, Color(0.9, 0.75, 0.2), 36)
-	_overlay_text(vbox, EquipmentData.rarity_name(ed.rarity), 16, EquipmentData.rarity_color(ed.rarity))
-	_overlay_text(vbox, ed.equipment_name + _equipment_enchant_tag(ed), 30, Color.WHITE)
+	_overlay_item_tile(vbox, ed)
+	_overlay_text(vbox, ed.equipment_name + _equipment_enchant_tag(ed), 26,
+			EquipmentData.rarity_color(ed.rarity))
 	_overlay_text(vbox, _equipment_stat_summary(ed), 20, Color(0.9, 0.9, 0.6))
-	_overlay_button(vbox, "Take it", func():
-		var old := GameState.equipment.get(ed.slot) as EquipmentData
-		if old != null:
-			GameState.inventory.append(old)
-		GameState.equipment[ed.slot] = ed
-		_close_current_node()
-		overlay.queue_free()
-	)
 	_overlay_button(vbox, "Add to inventory", func():
 		GameState.inventory.append(ed)
 		_close_current_node()
 		overlay.queue_free()
-	, 17)
+	)
 	_overlay_button(vbox, "Leave it", func(): overlay.queue_free(), 16, true)
 
 
@@ -2258,13 +2151,14 @@ func _build_found_equipment(ed: EquipmentData, title: String,
 func _build_found_scroll(sd: ScrollData, title: String,
 		root: Control, overlay: CanvasLayer) -> void:
 	_clear_children(root)
-	var vbox := _overlay_vbox(root)
+	var vbox := EventTemplates.result_flash(root)
 	_overlay_title(vbox, title, sd.stat_color(), 36)
-	_overlay_text(vbox, sd.scroll_name, 28, Color.WHITE)
+	_overlay_item_tile(vbox, sd)
+	_overlay_text(vbox, sd.scroll_name, 26, Color.WHITE)
 	_overlay_text(vbox, "+%d %s  |  %d%% success  /  %d%% destroy on fail" % [
 		sd.boost_amount, sd.stat_label(), sd.success_chance, sd.destroy_chance,
 	], 17, Color(0.85, 0.85, 0.65))
-	_overlay_button(vbox, "Take it", func():
+	_overlay_button(vbox, "Add to inventory", func():
 		GameState.scrolls.append(sd)
 		_close_current_node()
 		overlay.queue_free()
@@ -2321,7 +2215,8 @@ func _show_mystery_overlay(node: MapNode) -> void:
 func _build_ambush_intro(title: String, node: MapNode, tier: int, mult: int,
 		root: Control, overlay: CanvasLayer) -> void:
 	_clear_children(root)
-	var vbox := _overlay_vbox(root, 160.0)
+	# Format A: narration on the scroll.
+	var vbox := EventTemplates.scroll_split(root, "ambush", "res://assets/map/nodes/mystery.png")
 	_overlay_title(vbox, title, Color(1.0, 0.38, 0.28))
 	if mult > 1:
 		_overlay_text(vbox, "Defeat it for ×%d coins!" % mult, 18, Color(1.0, 0.85, 0.1))
@@ -2343,8 +2238,9 @@ func _show_gamble_overlay() -> void:
 
 func _build_gamble_menu(root: Control, overlay: CanvasLayer) -> void:
 	_clear_children(root)
-	var vbox := _overlay_vbox(root, 260.0)
-	_overlay_title(vbox, "The Gambler", Color(0.95, 0.35, 0.65), 48)
+	# Format B: the gambler speaks.
+	var vbox := EventTemplates.dialogue_split(root, "gambler", "The Gambler",
+			Color(0.95, 0.35, 0.65), "res://assets/map/nodes/gamble.png")
 	_overlay_text(vbox, "\"Feeling lucky, traveler?\"")
 	_overlay_text(vbox, "Your coins: %d" % GameState.coins, 17, Color(1.0, 0.85, 0.1))
 
@@ -2411,11 +2307,12 @@ func _show_shrine_overlay() -> void:
 
 	var ed := _roll_equipment(2)
 
-	var vbox := _overlay_vbox(root, 280.0)
+	# Format A: narration on the scroll.
+	var vbox := EventTemplates.scroll_split(root, "shrine", "res://assets/map/nodes/shrine.png")
 	_overlay_title(vbox, "Cursed Shrine", Color(0.72, 0.35, 0.95), 46)
 	_overlay_text(vbox, "An offering rests on the altar. Dark whispers promise power… for a price.")
-	_overlay_text(vbox, EquipmentData.rarity_name(ed.rarity), 16, EquipmentData.rarity_color(ed.rarity))
-	_overlay_text(vbox, ed.equipment_name, 28, Color.WHITE)
+	_overlay_item_tile(vbox, ed)
+	_overlay_text(vbox, ed.equipment_name, 26, EquipmentData.rarity_color(ed.rarity))
 	_overlay_text(vbox, _equipment_stat_summary(ed), 20, Color(0.9, 0.9, 0.6))
 	_overlay_text(vbox, "Curse: −10 max HP for the rest of this run", 17, Color(1.0, 0.45, 0.4))
 	_overlay_button(vbox, "Accept the offering", func():
@@ -2435,8 +2332,9 @@ func _show_dojo_overlay(node: MapNode) -> void:
 	var overlay: CanvasLayer = parts[0]
 	var root: Control = parts[1]
 
-	var vbox := _overlay_vbox(root, 200.0)
-	_overlay_title(vbox, "Training Dojo", Color(0.5, 0.9, 0.4), 46)
+	# Format B: the master speaks.
+	var vbox := EventTemplates.dialogue_split(root, "master", "Training Dojo",
+			Color(0.5, 0.9, 0.4), "res://assets/map/nodes/dojo.png")
 	_overlay_text(vbox, "\"Defeat me, and I will perfect one of your techniques — free of charge.\"")
 	_overlay_button(vbox, "Accept the duel", func():
 		_close_current_node()
@@ -2452,8 +2350,9 @@ func _show_dojo_upgrade_overlay() -> void:
 	var overlay: CanvasLayer = parts[0]
 	var root: Control = parts[1]
 
-	var vbox := _overlay_vbox(root, 320.0)
-	_overlay_title(vbox, "Master's Lesson", Color(0.5, 0.9, 0.4), 40)
+	# Format B: the master speaks.
+	var vbox := EventTemplates.dialogue_split(root, "master", "Master's Lesson",
+			Color(0.5, 0.9, 0.4), "res://assets/map/nodes/dojo.png")
 	_overlay_text(vbox, "\"Well fought. Choose a technique to perfect.\"  (+2 damage, free)")
 
 	var scroll := ScrollContainer.new()
@@ -2488,10 +2387,14 @@ func _show_bounty_overlay(node: MapNode) -> void:
 	var overlay: CanvasLayer = parts[0]
 	var root: Control = parts[1]
 
-	var vbox := _overlay_vbox(root, 200.0)
-	_overlay_title(vbox, "Bounty Board", Color(0.9, 0.55, 0.3), 46)
-	_overlay_text(vbox, "WANTED: defeat the target within 3 rounds.")
-	_overlay_text(vbox, "Reward: coins ×3", 19, Color(1.0, 0.85, 0.1))
+	# Format F: wanted poster — dark ink text on parchment.
+	var vbox := EventTemplates.poster(root)
+	_overlay_title(vbox, "WANTED", Color(0.30, 0.12, 0.08), 58)
+	_overlay_text(vbox, "Defeat the target\nwithin 3 rounds.", 22, Color(0.22, 0.16, 0.09))
+	_overlay_text(vbox, "REWARD: coins ×3", 24, Color(0.45, 0.28, 0.05))
+	var spacer := Control.new()
+	spacer.custom_minimum_size = Vector2(0, 14)
+	vbox.add_child(spacer)
 	_overlay_button(vbox, "Take the contract", func():
 		_close_current_node()
 		overlay.queue_free()
@@ -2526,11 +2429,12 @@ func _show_secret_overlay(node: MapNode) -> void:
 func _build_demon_trade(root: Control, overlay: CanvasLayer) -> void:
 	_clear_children(root)
 	var ed := _roll_equipment(99)   # always LEGENDARY
-	var vbox := _overlay_vbox(root, 280.0)
-	_overlay_title(vbox, "A Demon Awaits", Color(0.9, 0.2, 0.3), 46)
+	# Format B: the demon speaks.
+	var vbox := EventTemplates.dialogue_split(root, "demon", "A Demon Awaits",
+			Color(0.9, 0.2, 0.3), "res://assets/map/nodes/secret.png")
 	_overlay_text(vbox, "\"Your vitality for my treasure. A fair trade, mortal.\"")
-	_overlay_text(vbox, EquipmentData.rarity_name(ed.rarity), 16, EquipmentData.rarity_color(ed.rarity))
-	_overlay_text(vbox, ed.equipment_name, 28, Color.WHITE)
+	_overlay_item_tile(vbox, ed)
+	_overlay_text(vbox, ed.equipment_name, 26, EquipmentData.rarity_color(ed.rarity))
 	_overlay_text(vbox, _equipment_stat_summary(ed), 20, Color(0.9, 0.9, 0.6))
 	_overlay_text(vbox, "Price: −15 max HP for the rest of this run", 17, Color(1.0, 0.45, 0.4))
 	_overlay_button(vbox, "Make the trade", func():

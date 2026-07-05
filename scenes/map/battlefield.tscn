@@ -20,7 +20,7 @@ script = ExtResource("2_field")
 [node name="Background" type="ColorRect" parent="." unique_id=1283895983]
 offset_right = 1920.0
 offset_bottom = 1080.0
-color = Color(0.184314, 0.227451, 0.164706, 1)
+color = Color(0.075, 0.085, 0.115, 1)
 
 [node name="Board" type="Node2D" parent="." unique_id=1152033095]
 position = Vector2(960, 540)
@@ -60,10 +60,20 @@ grow_horizontal = 0
 mirrored = true
 
 [node name="BattleHUD" parent="UI" unique_id=1581189920 instance=ExtResource("10_hud")]
-offset_right = 1083.0
-offset_bottom = 87.0
+anchor_left = 0.5
+anchor_right = 0.5
+offset_left = -220.0
+offset_top = 16.0
+offset_right = 220.0
+offset_bottom = 76.0
+grow_horizontal = 2
 
 [node name="PlanBar" parent="UI" unique_id=1778273698 instance=ExtResource("9_planbar")]
+offset_left = 385.0
+offset_top = -150.0
+offset_right = 1017.0
+offset_bottom = 150.0
+scale = Vector2(0.7, 0.7)
 
 [node name="DiscardPile" parent="UI" unique_id=610416569 instance=ExtResource("8_discard")]
 anchors_preset = 2
@@ -143,9 +153,9 @@ anchor_top = 0.5
 anchor_right = 1.0
 anchor_bottom = 0.5
 offset_left = -403.7622
-offset_top = -96.736176
+offset_top = 100.0
 offset_right = -230.7633
-offset_bottom = 126.76416
+offset_bottom = 323.5
 grow_horizontal = 0
 grow_vertical = 2
 

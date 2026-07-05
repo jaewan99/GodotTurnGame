@@ -63,6 +63,9 @@ const ENEMY_COLOR := Color(0.95, 0.35, 0.35)
 # ── Signals (so the UI / battle logic can react) ──────────────────────────────
 signal hp_changed(hp: int, max_hp: int)
 signal energy_changed(energy: int, max_energy: int)
+signal block_changed(block: int)
+## Emitted when block absorbed part or all of an incoming hit.
+signal blocked(amount: int)
 signal died
 signal hit(amount: int)
 
@@ -101,6 +104,8 @@ func take_damage(amount: int) -> void:
 		var absorbed := mini(block, amount)
 		block -= absorbed
 		amount -= absorbed
+		block_changed.emit(block)
+		blocked.emit(absorbed)
 	if amount <= 0:
 		return
 	hp = maxi(0, hp - amount)

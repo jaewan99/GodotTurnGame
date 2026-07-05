@@ -86,8 +86,12 @@ func _ready() -> void:
 
 	if _player != null:
 		_player.hit.connect(func(amount: int): _spawn_damage_number(_player, amount))
+		_player.blocked.connect(func(amount: int): _spawn_float_text(
+				_player, "Blocked %d" % amount, Color(0.55, 0.78, 1.0), 24))
 	if _enemy != null:
 		_enemy.hit.connect(func(amount: int): _spawn_damage_number(_enemy, amount))
+		_enemy.blocked.connect(func(amount: int): _spawn_float_text(
+				_enemy, "Blocked %d" % amount, Color(0.55, 0.78, 1.0), 24))
 
 	_slot_nodes.clear()
 	for i in range(MAX_SLOTS):
@@ -198,6 +202,7 @@ func _begin_plan() -> void:
 			var ed := item as EquipmentData
 			if ed != null:
 				_player.block += ed.block_per_turn
+		_player.block_changed.emit(_player.block)
 
 
 ## Show/hide all the card-planning UI. Hidden during the fight so the player can
@@ -486,11 +491,13 @@ func _show_enemy_intent() -> void:
 		return
 	_clear_enemy_intent()
 
+	# Sits just below the enemy HUD panel (x 1460–1900, y 16–92),
+	# aligned to its left edge so nothing overlaps the bars.
 	var header := Label.new()
 	header.text = "Enemy intent:"
 	header.add_theme_font_size_override("font_size", 13)
 	header.modulate = Color(0.85, 0.50, 0.50)
-	header.position = Vector2(1560.0, 66.0)
+	header.position = Vector2(1460.0, 102.0)
 	ui.add_child(header)
 	_intent_displays.append(header)
 
@@ -498,7 +505,7 @@ func _show_enemy_intent() -> void:
 		var cd: CardData = _enemy_plan[i]
 		var chip := Panel.new()
 		chip.size = Vector2(110.0, 36.0)
-		chip.position = Vector2(1560.0 + i * 118.0, 86.0)
+		chip.position = Vector2(1460.0 + i * 118.0, 124.0)
 
 		var style := StyleBoxFlat.new()
 		style.corner_radius_top_left     = 6
@@ -871,15 +878,23 @@ func _update_facing() -> void:
 # ── Combat feedback ───────────────────────────────────────────────────────────
 
 func _spawn_damage_number(token: Token, amount: int) -> void:
+	_spawn_float_text(token, "-%d" % amount, Color(1.0, 0.22, 0.22), 34)
+
+
+## Floating combat text over a token: drifts up and fades out.
+func _spawn_float_text(token: Token, text: String, color: Color, font_size: int) -> void:
 	var ui := get_node_or_null("UI") as CanvasLayer
 	if ui == null:
 		return
 	var lbl := Label.new()
-	lbl.text = "-%d" % amount
-	lbl.add_theme_font_size_override("font_size", 34)
-	lbl.add_theme_color_override("font_color", Color(1.0, 0.22, 0.22))
+	lbl.text = text
+	lbl.add_theme_font_size_override("font_size", font_size)
+	lbl.add_theme_color_override("font_color", color)
+	lbl.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.85))
+	lbl.add_theme_constant_override("outline_size", 6)
 	# token.global_position is design-space screen coords (no camera in this scene)
-	lbl.position = token.global_position + Vector2(-18.0, -90.0)
+	# Slight random x nudge so back-to-back numbers don't stack exactly.
+	lbl.position = token.global_position + Vector2(-18.0 + randf_range(-14.0, 14.0), -90.0)
 	ui.add_child(lbl)
 	var tween := create_tween().set_parallel(true)
 	tween.tween_property(lbl, "position:y", lbl.position.y - 72.0, 0.9)
@@ -1165,7 +1180,7 @@ func _make_reward_card_front(cd: CardData, W: float, H: float,
 	vbox.add_child(btn_row)
 
 	var take_btn := Button.new()
-	take_btn.text = "Take it"
+	take_btn.text = "Choose"
 	take_btn.add_theme_font_size_override("font_size", 14)
 	take_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	take_btn.pressed.connect(func():
@@ -1217,6 +1232,9 @@ func _advance_floor_if_boss() -> void:
 	if GameState.map_nodes[GameState.current_node_id].type == MapNode.Type.BOSS:
 		GameState.floor_num += 1
 		GameState.map_nodes = []
+		# Old node ids mean nothing on the next floor's map — without this the
+		# new map would open focused on a random node instead of START.
+		GameState.current_node_id = -1
 
 
 func _on_reward_chosen(cd: CardData, coins_earned: int, overlay: CanvasLayer) -> void:
@@ -1229,10 +1247,8 @@ func _on_reward_chosen(cd: CardData, coins_earned: int, overlay: CanvasLayer) ->
 
 func _on_equipment_chosen(ed: EquipmentData, coins_earned: int, overlay: CanvasLayer) -> void:
 	GameState.coins += coins_earned
-	var old := GameState.equipment.get(ed.slot) as EquipmentData
-	if old != null:
-		GameState.inventory.append(old)
-	GameState.equipment[ed.slot] = ed
+	# Rewards always go to the inventory; equipping is a deliberate act there.
+	GameState.inventory.append(ed)
 	overlay.queue_free()
 	_advance_floor_if_boss()
 	get_tree().change_scene_to_file(MAP_SCENE)

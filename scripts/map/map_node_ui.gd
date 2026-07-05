@@ -27,11 +27,14 @@ func _draw() -> void:
 	var c := size / 2.0
 	var r := minf(size.x, size.y) / 2.0
 	# Breathing pulse: ring expands and contracts to invite a click.
+	# Boss glows an ominous red; everything else the inviting gold.
+	var gc := Color(1.0, 0.30, 0.22) if data.type == MapNode.Type.BOSS \
+			else Color(1.0, 0.85, 0.40)
 	var pulse := 2.5 + 2.5 * sin(_glow_time * 3.0)
 	draw_arc(c, r + 3.0 + pulse, 0.0, TAU, 48,
-			Color(1.0, 0.85, 0.40, 0.50 - pulse * 0.05), 2.0, true)
+			Color(gc.r, gc.g, gc.b, 0.50 - pulse * 0.05), 2.0, true)
 	draw_arc(c, r + 7.0 + pulse, 0.0, TAU, 48,
-			Color(1.0, 0.85, 0.40, 0.22 - pulse * 0.03), 2.0, true)
+			Color(gc.r, gc.g, gc.b, 0.22 - pulse * 0.03), 2.0, true)
 
 
 func setup(map_node: MapNode) -> void:
