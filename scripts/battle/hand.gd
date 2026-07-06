@@ -55,6 +55,9 @@ func take_card(card: GameCard) -> void:
 
 ## Put a card back into the hand (e.g. when its slot was cleared).
 func return_card(card: GameCard) -> void:
+	var parent := card.get_parent()
+	if parent != null and parent != self:
+		parent.remove_child(card)          # detach from its slot/wrapper first
 	if card.get_parent() != self:
 		add_child(card)
 	card.pivot_offset = Vector2(CARD_W * 0.5, 0.0)

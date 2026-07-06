@@ -150,22 +150,7 @@ func _add_ink_background() -> void:
 	var rect := ColorRect.new()
 	rect.set_anchors_preset(Control.PRESET_FULL_RECT)
 	rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_bg_mat = ShaderMaterial.new()
-	_bg_mat.shader = preload("res://shaders/map_ink_bg.gdshader")
-
-	# Simplex-fbm noise for organic cloud shapes (value noise looks square).
-	var noise := FastNoiseLite.new()
-	noise.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
-	noise.fractal_type = FastNoiseLite.FRACTAL_FBM
-	noise.fractal_octaves = 5
-	noise.frequency = 0.006
-	var noise_tex := NoiseTexture2D.new()
-	noise_tex.noise = noise
-	noise_tex.seamless = true
-	noise_tex.width = 512
-	noise_tex.height = 512
-	_bg_mat.set_shader_parameter("noise_tex", noise_tex)
-
+	_bg_mat = HudKit.ink_material()
 	rect.material = _bg_mat
 	layer.add_child(rect)
 
@@ -370,44 +355,12 @@ var _card_viewer: CardViewer = null
 ## Builds the whole map HUD: coins + floor panel top-left,
 ## Inventory / Deck buttons top-right.
 func _add_hud() -> void:
-	var panel := PanelContainer.new()
-	panel.add_theme_stylebox_override("panel", _hud_style())
+	var panel := HudKit.coins_floor_panel()
 	panel.set_anchors_preset(Control.PRESET_TOP_LEFT)
 	panel.position = Vector2(16, 14)
 	add_child(panel)
-
-	var hbox := HBoxContainer.new()
-	hbox.add_theme_constant_override("separation", 12)
-	panel.add_child(hbox)
-
-	var coin_tex := _hud_icon("coin")
-	if coin_tex != null:
-		var coin_icon := TextureRect.new()
-		coin_icon.texture = _tinted(coin_tex, Color(1.0, 0.85, 0.25))
-		coin_icon.custom_minimum_size = Vector2(33, 33)
-		coin_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-		coin_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-		hbox.add_child(coin_icon)
-		_coins_prefix = ""
-
-	_coins_label = Label.new()
-	_coins_label.name = "CoinsLabel"
-	_coins_label.add_theme_font_size_override("font_size", 30)
-	_coins_label.modulate = Color(1.0, 0.85, 0.25)
-	_coins_label.text = _coins_prefix + str(GameState.coins)
-	hbox.add_child(_coins_label)
-
-	var sep := Label.new()
-	sep.text = "|"
-	sep.add_theme_font_size_override("font_size", 27)
-	sep.modulate = Color(1.0, 1.0, 1.0, 0.25)
-	hbox.add_child(sep)
-
-	var floor_lbl := Label.new()
-	floor_lbl.text = "Floor %d" % GameState.floor_num
-	floor_lbl.add_theme_font_size_override("font_size", 30)
-	floor_lbl.modulate = Color(0.85, 0.85, 0.90)
-	hbox.add_child(floor_lbl)
+	_coins_label = panel.find_child("CoinsLabel", true, false) as Label
+	_coins_prefix = "" if HudKit.icon("coin") != null else "Coins: "
 
 	var btns := HBoxContainer.new()
 	btns.add_theme_constant_override("separation", 8)
@@ -425,7 +378,7 @@ func _add_hud() -> void:
 	inv_btn.pressed.connect(func(): InventoryOverlay.open(self))
 	btns.add_child(inv_btn)
 
-	_deck_btn = _hud_button("Deck (%d)" % GameState.deck.size(), "deck", Color(0.87, 0.52, 0.45))
+	_deck_btn = _hud_button(_deck_btn_label(), "deck", Color(0.87, 0.52, 0.45))
 	_deck_btn.pressed.connect(_show_deck_viewer)
 	btns.add_child(_deck_btn)
 
@@ -514,62 +467,22 @@ func _add_hud() -> void:
 		row.add_child(txt)
 
 
-## Translucent dark panel style shared by the HUD elements (borderless).
+## HUD building blocks live in HudKit (shared with the battlefield).
 func _hud_style() -> StyleBoxFlat:
-	var s := StyleBoxFlat.new()
-	s.bg_color = Color(0.03, 0.04, 0.06, 0.72)
-	s.set_corner_radius_all(8)
-	s.content_margin_left = 14.0
-	s.content_margin_right = 14.0
-	s.content_margin_top = 7.0
-	s.content_margin_bottom = 7.0
-	return s
+	return HudKit.style()
 
 
-## Folder scanned for HUD art (coin.png, inventory.png, deck.png).
-const HUD_ICON_DIR := "res://assets/ui/hud/"
-
-## HUD icon texture by name, or null when the PNG hasn't been added yet.
 static func _hud_icon(icon_name: String) -> Texture2D:
-	var path := "%s%s.png" % [HUD_ICON_DIR, icon_name]
-	if ResourceLoader.exists(path):
-		return load(path)
-	return null
+	return HudKit.icon(icon_name)
 
 
-## Recolors a silhouette icon to a flat tint, keeping its alpha shape.
-## Needed because the source art is black — modulate can't brighten black.
 static func _tinted(tex: Texture2D, tint: Color) -> Texture2D:
-	var img := tex.get_image()
-	img.convert(Image.FORMAT_RGBA8)
-	for y in img.get_height():
-		for x in img.get_width():
-			var a := img.get_pixel(x, y).a
-			img.set_pixel(x, y, Color(tint.r, tint.g, tint.b, a))
-	return ImageTexture.create_from_image(img)
+	return HudKit.tinted(tex, tint)
 
 
 func _hud_button(label: String, icon_name: String = "",
 		icon_tint: Color = Color.WHITE) -> Button:
-	var btn := Button.new()
-	btn.text = label
-	btn.add_theme_font_size_override("font_size", 26)
-	var hover := _hud_style()
-	hover.bg_color = Color(0.10, 0.11, 0.15, 0.85)
-	btn.add_theme_stylebox_override("normal", _hud_style())
-	btn.add_theme_stylebox_override("hover", hover)
-	btn.add_theme_stylebox_override("pressed", hover)
-	btn.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
-	if icon_name != "":
-		var tex := _hud_icon(icon_name)
-		if tex != null:
-			btn.icon = _tinted(tex, icon_tint)
-			btn.expand_icon = true
-			btn.add_theme_constant_override("icon_max_width", 30)
-			for state in ["icon_normal_color", "icon_hover_color",
-					"icon_pressed_color", "icon_focus_color"]:
-				btn.add_theme_color_override(state, Color.WHITE)
-	return btn
+	return HudKit.button(label, icon_name, icon_tint)
 
 
 static func _type_name(t: MapNode.Type) -> String:
@@ -591,85 +504,14 @@ static func _type_name(t: MapNode.Type) -> String:
 	return "?"
 
 
-## Full player stat sheet: what the next battle will actually start with.
-## Mirrors battlefield._apply_equipment (base token stats + gear − curses).
+## Player stat sheet — shared with the battlefield via HudKit.
 func _show_stats_overlay() -> void:
-	var parts := _new_overlay()
-	var overlay: CanvasLayer = parts[0]
-	var root: Control = parts[1]
-
-	# Base values from the Token scene defaults — battles start from these.
-	var t := preload("res://scenes/map/token.tscn").instantiate() as Token
-	var base_hp: int = t.max_hp
-	var base_energy: int = t.max_energy
-	var start_energy: int = t.start_energy
-	var regen: int = t.energy_regen
-	t.free()
-
-	# Aggregate equipment exactly like battlefield._apply_equipment.
-	var hp_bonus := 0
-	var energy_bonus := 0
-	var dmg := 0
-	var crit := 0
-	var block := 0
-	for item in GameState.equipment.values():
-		var ed := item as EquipmentData
-		if ed == null:
-			continue
-		hp_bonus     += ed.max_hp_bonus
-		energy_bonus += ed.max_energy_bonus
-		dmg          += ed.damage_bonus
-		crit         += ed.crit_chance
-		block        += ed.block_per_turn
-
-	var cursed_base := maxi(5, base_hp - GameState.max_hp_curse)
-	var max_hp := cursed_base + hp_bonus
-
-	var vbox := EventTemplates.result_flash(root, 300.0)
-	_overlay_title(vbox, "Stats", Color(0.55, 0.85, 0.75), 40)
-
-	var hp_detail := "%d base" % base_hp
-	if hp_bonus > 0:
-		hp_detail += "  +%d gear" % hp_bonus
-	if GameState.max_hp_curse > 0:
-		hp_detail += "  −%d curse" % GameState.max_hp_curse
-	_stats_row(vbox, "Max HP", "%d   (%s)" % [max_hp, hp_detail],
-			Color(0.45, 0.95, 0.55))
-	_stats_row(vbox, "Block per round", "+%d" % block, Color(0.55, 0.78, 1.0))
-	_stats_row(vbox, "Attack damage bonus", "+%d" % dmg, Color(1.0, 0.55, 0.45))
-	_stats_row(vbox, "Crit chance", "%d%%" % crit, Color(1.0, 0.9, 0.4))
-	_stats_row(vbox, "Max energy", "%d   (%d base%s)" % [base_energy + energy_bonus,
-			base_energy, "  +%d gear" % energy_bonus if energy_bonus > 0 else ""],
-			Color(0.5, 0.7, 1.0))
-	_stats_row(vbox, "Battle start energy", "%d,  +%d regen each round" % [
-			start_energy + energy_bonus, regen])
-
-	if GameState.max_hp_curse > 0:
-		_stats_row(vbox, "Active curse", "−%d max HP for this run" % GameState.max_hp_curse,
-				Color(1.0, 0.42, 0.38))
-
-	var spacer := Control.new()
-	spacer.custom_minimum_size = Vector2(0, 10)
-	vbox.add_child(spacer)
-	_overlay_button(vbox, "Close", func(): overlay.queue_free())
+	HudKit.show_stats(self)
 
 
-func _stats_row(vbox: VBoxContainer, label_text: String, value_text: String,
-		value_col: Color = Color(0.92, 0.92, 0.95)) -> void:
-	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 24)
-	vbox.add_child(row)
-	var l := Label.new()
-	l.text = label_text
-	l.add_theme_font_size_override("font_size", 18)
-	l.modulate = Color(0.62, 0.62, 0.68)
-	l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	row.add_child(l)
-	var v := Label.new()
-	v.text = value_text
-	v.add_theme_font_size_override("font_size", 18)
-	v.modulate = value_col
-	row.add_child(v)
+## Label like "Cards (9+5)": deck actions + the permanent move cards.
+func _deck_btn_label() -> String:
+	return "Cards (%d+%d)" % [GameState.deck.size(), MovePool.MOVE_IDS.size()]
 
 
 func _show_deck_viewer() -> void:
@@ -677,14 +519,17 @@ func _show_deck_viewer() -> void:
 		_card_viewer = CARD_VIEWER_SCENE.instantiate()
 		add_child(_card_viewer)
 	_refresh_coins_label()
-	_card_viewer.show_cards("Deck  (%d)" % GameState.deck.size(), GameState.deck)
+	var cards: Array = GameState.deck.duplicate()
+	for id in MovePool.MOVE_IDS:
+		cards.append(CardData.by_id(id))
+	_card_viewer.show_cards("Cards  (%d+%d)" % [GameState.deck.size(), MovePool.MOVE_IDS.size()], cards)
 
 
 func _refresh_coins_label() -> void:
 	if is_instance_valid(_coins_label):
 		_coins_label.text = _coins_prefix + str(GameState.coins)
 	if is_instance_valid(_deck_btn):
-		_deck_btn.text = "Deck (%d)" % GameState.deck.size()
+		_deck_btn.text = _deck_btn_label()
 
 
 func _show_toast(msg: String) -> void:

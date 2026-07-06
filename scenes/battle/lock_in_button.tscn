@@ -1,23 +1,6 @@
 [gd_scene format=3 uid="uid://b16rd5u0f3lct"]
 
-[ext_resource type="Texture2D" uid="uid://buuscbfivagaw" path="res://assets/ui/icon_lock_in_inactive.png" id="1_icon"]
-[ext_resource type="Shader" uid="uid://bqk0o7vtumqkd" path="res://assets/ui/lock_in_glow.gdshader" id="2_shader"]
-
-[sub_resource type="ShaderMaterial" id="ShaderMaterial_1"]
-shader = ExtResource("2_shader")
-shader_parameter/active = false
-shader_parameter/hovered = false
-shader_parameter/glow_color = Color(0.2, 1, 0.55, 1)
-shader_parameter/glow_radius = 20.0
-shader_parameter/outer_strength = 3.2
-shader_parameter/inner_strength = 0.6
-shader_parameter/edge_strength = 0.2
-shader_parameter/edge_scale = 1.5
-
 [node name="LockInButton" type="Button" unique_id=561978115]
-texture_filter = 2
-material = SubResource("ShaderMaterial_1")
-custom_minimum_size = Vector2(64, 64)
-icon = ExtResource("1_icon")
-flat = true
-expand_icon = true
+custom_minimum_size = Vector2(160, 56)
+disabled = true
+text = "Lock In"

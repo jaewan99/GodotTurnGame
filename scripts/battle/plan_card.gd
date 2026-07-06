@@ -5,6 +5,7 @@ class_name PlanCard
 extends Control
 
 const CARD_SCENE := preload("res://scenes/cards/card.tscn")
+const NATIVE_CARD := Vector2(200.0, 300.0)   # card's undistorted design size
 
 @onready var _back  : Control = $Back
 @onready var _front : Control = $Front
@@ -30,14 +31,23 @@ func setup(cd: CardData) -> void:
 		lbl.vertical_alignment   = VERTICAL_ALIGNMENT_CENTER
 		_front.add_child(lbl)
 		return
-	# Build the real GameCard inside the Front container.
+	# Build the real GameCard at its native size inside a wrapper scaled to fit
+	# — same trick as the plan slots, so it fills the card with no distortion.
+	var holder := Control.new()
+	holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	holder.scale = size / NATIVE_CARD
+	_front.add_child(holder)
+
 	_card = CARD_SCENE.instantiate()
 	_card.consumable    = false
 	_card.mouse_filter  = Control.MOUSE_FILTER_IGNORE
+	_card.focus_mode    = Control.FOCUS_NONE
 	_card.data          = cd
-	_card.card_size     = size
-	_front.add_child(_card)
-	_card.set_anchors_preset(Control.PRESET_FULL_RECT)
+	holder.add_child(_card)
+	_card.card_size     = NATIVE_CARD
+	_card.set_anchors_preset(Control.PRESET_TOP_LEFT, false)
+	_card.position      = Vector2.ZERO
+	_card.scale         = Vector2.ONE
 
 
 ## Squish on X, swap sides, un-squish.

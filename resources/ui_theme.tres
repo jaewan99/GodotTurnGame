@@ -1,4 +1,4 @@
-[gd_resource type="Theme" load_steps=2 format=3]
+[gd_resource type="Theme" format=3 uid="uid://bvfll0iics54f"]
 
 [sub_resource type="StyleBoxFlat" id="tooltip_panel"]
 content_margin_left = 12.0

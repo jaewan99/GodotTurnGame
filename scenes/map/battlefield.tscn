@@ -29,7 +29,7 @@ columns = 5
 
 [node name="PlayerToken" parent="Board" unique_id=90672654 instance=ExtResource("3_token")]
 position = Vector2(-280, 0)
-display_name = "Inuyasha"
+display_name = "player"
 
 [node name="EnemyToken" parent="Board" unique_id=1085069902 instance=ExtResource("3_token")]
 position = Vector2(280, 0)
@@ -43,9 +43,9 @@ start_cell = Vector2i(4, 1)
 layout_mode = 3
 anchors_preset = 0
 offset_left = 20.0
-offset_top = 16.0
+offset_top = 84.0
 offset_right = 460.0
-offset_bottom = 92.0
+offset_bottom = 160.0
 
 [node name="EnemyHUD" parent="UI" unique_id=283232754 instance=ExtResource("5_hud")]
 layout_mode = 3
@@ -53,27 +53,27 @@ anchors_preset = 1
 anchor_left = 1.0
 anchor_right = 1.0
 offset_left = -460.0
-offset_top = 16.0
+offset_top = 84.0
 offset_right = -20.0
-offset_bottom = 92.0
+offset_bottom = 160.0
 grow_horizontal = 0
 mirrored = true
 
 [node name="BattleHUD" parent="UI" unique_id=1581189920 instance=ExtResource("10_hud")]
+anchors_preset = 5
 anchor_left = 0.5
 anchor_right = 0.5
-offset_left = -220.0
-offset_top = 16.0
-offset_right = 220.0
-offset_bottom = 76.0
+offset_left = -110.0
+offset_top = 14.0
+offset_right = 110.0
+offset_bottom = 66.0
 grow_horizontal = 2
 
 [node name="PlanBar" parent="UI" unique_id=1778273698 instance=ExtResource("9_planbar")]
-offset_left = 385.0
-offset_top = -150.0
-offset_right = 1017.0
-offset_bottom = 150.0
-scale = Vector2(0.7, 0.7)
+offset_left = 1349.0
+offset_top = 363.0
+offset_right = 1771.0
+offset_bottom = 558.0
 
 [node name="DiscardPile" parent="UI" unique_id=610416569 instance=ExtResource("8_discard")]
 anchors_preset = 2
@@ -102,15 +102,8 @@ grow_vertical = 0
 layout_mode = 3
 
 [node name="HideButton" parent="UI" unique_id=1841942561 instance=ExtResource("14_hidebtn")]
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-offset_left = 840.0
-offset_top = 250.0
-offset_right = -812.00073
-offset_bottom = -640.0008
-grow_horizontal = 2
-grow_vertical = 2
+offset_right = 140.0
+offset_bottom = 36.0
 
 [node name="Banner" type="Label" parent="UI" unique_id=276157750]
 visible = false
@@ -152,10 +145,10 @@ anchor_left = 1.0
 anchor_top = 0.5
 anchor_right = 1.0
 anchor_bottom = 0.5
-offset_left = -403.7622
-offset_top = 100.0
-offset_right = -230.7633
-offset_bottom = 323.5
+offset_left = -397.0
+offset_top = 184.0
+offset_right = -237.0
+offset_bottom = 240.0
 grow_horizontal = 0
 grow_vertical = 2
 

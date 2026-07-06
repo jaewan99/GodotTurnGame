@@ -1,23 +1,5 @@
 [gd_scene format=3 uid="uid://ci6v1bcmhr30l"]
 
-[ext_resource type="Texture2D" uid="uid://dbtmn78ywx5mf" path="res://assets/ui/icon_hide.png" id="1_icon"]
-[ext_resource type="Shader" uid="uid://cyp3w05doxxft" path="res://assets/ui/hide_button_glow.gdshader" id="2_shader"]
-
-[sub_resource type="ShaderMaterial" id="ShaderMaterial_1"]
-shader = ExtResource("2_shader")
-shader_parameter/active = false
-shader_parameter/hovered = false
-shader_parameter/glow_color = Color(1, 0.84313726, 0, 1)
-shader_parameter/glow_radius = 20.0
-shader_parameter/outer_strength = 4.2
-shader_parameter/inner_strength = 0.1
-shader_parameter/edge_strength = 1.1
-shader_parameter/edge_scale = 0.2
-
 [node name="HideButton" type="Button" unique_id=1575826749]
-texture_filter = 2
-material = SubResource("ShaderMaterial_1")
-custom_minimum_size = Vector2(64, 64)
-icon = ExtResource("1_icon")
-flat = true
-expand_icon = true
+custom_minimum_size = Vector2(140, 36)
+text = "Hide Plan"

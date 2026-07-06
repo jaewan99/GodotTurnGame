@@ -1,7 +1,8 @@
 ## CombatantHUD
 ## A Tekken-style status panel for one combatant: translucent panel with
-## name row, a Diablo-style liquid HP bar (with trailing damage ghost),
-## a calmer liquid energy bar, and a block badge when block > 0.
+## name row, a clean glossy HP bar (rounded, top-glass highlight, slow shine
+## sweep, with a trailing damage-ghost flash), a matching energy bar, and a
+## block badge when block > 0.
 ##
 ## Set `mirrored = true` for the right-side (enemy) panel: the name
 ## right-aligns and the bars drain toward the center, fighting-game style.
@@ -48,6 +49,7 @@ func _ready() -> void:
 	_hp_mat = ShaderMaterial.new()
 	_hp_mat.shader = FLUID_SHADER
 	_hp_mat.set_shader_parameter("mirrored", mirrored)
+	_hp_mat.set_shader_parameter("bar_size", _hp_rect.size)
 	var hp_bar := ColorRect.new()
 	hp_bar.material = _hp_mat
 	hp_bar.position = _hp_rect.position
@@ -59,12 +61,10 @@ func _ready() -> void:
 	_en_mat = ShaderMaterial.new()
 	_en_mat.shader = FLUID_SHADER
 	_en_mat.set_shader_parameter("mirrored", mirrored)
-	_en_mat.set_shader_parameter("liquid_color", Color(0.25, 0.55, 0.95))
+	_en_mat.set_shader_parameter("bar_size", _en_rect.size)
+	_en_mat.set_shader_parameter("liquid_color", Color(0.30, 0.62, 1.0))
 	_en_mat.set_shader_parameter("liquid_deep", Color(0.06, 0.16, 0.42))
 	_en_mat.set_shader_parameter("ghost_color", Color(0, 0, 0, 0))
-	_en_mat.set_shader_parameter("wave_amp", 0.012)
-	_en_mat.set_shader_parameter("wave_speed", 1.6)
-	_en_mat.set_shader_parameter("bubbles", 0.4)
 	var en_bar := ColorRect.new()
 	en_bar.material = _en_mat
 	en_bar.position = _en_rect.position
@@ -94,13 +94,14 @@ func _ready() -> void:
 	_hp_label.horizontal_alignment = opposite
 	_hp_label.position = Vector2(PAD, 4.0)
 	_hp_label.size = Vector2(w, 20.0)
-	_hp_label.add_theme_font_size_override("font_size", 15)
+	_hp_label.add_theme_font_size_override("font_size", 20)
 	_hp_label.modulate = Color(0.95, 0.95, 0.95)
 
 	_energy_label.horizontal_alignment = opposite
-	_energy_label.position = Vector2(PAD + 6.0, _en_rect.position.y - 1.0)
-	_energy_label.size = Vector2(w - 12.0, _en_rect.size.y + 2.0)
-	_energy_label.add_theme_font_size_override("font_size", 11)
+	_energy_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_energy_label.position = Vector2(PAD + 6.0, _en_rect.get_center().y - 13.0)
+	_energy_label.size = Vector2(w - 12.0, 26.0)
+	_energy_label.add_theme_font_size_override("font_size", 20)
 	_energy_label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))
 	_energy_label.add_theme_constant_override("outline_size", 4)
 
@@ -206,11 +207,22 @@ func _draw() -> void:
 
 
 func _draw_overlay() -> void:
-	# Bar borders.
-	_overlay.draw_rect(_hp_rect, Color(0, 0, 0, 0.9), false, 2.0)
-	_overlay.draw_rect(_en_rect, Color(0, 0, 0, 0.9), false, 2.0)
+	# Rounded bar borders (match the shader's rounded-rect mask).
+	_draw_bar_border(_hp_rect)
+	_draw_bar_border(_en_rect)
 	_draw_energy_preview(_en_rect)
 	_draw_block_badge()
+
+
+## Thin rounded outline hugging a bar; radius follows the bar's half-height,
+## same as the shader so the border and fill share the same corners.
+func _draw_bar_border(rect: Rect2) -> void:
+	var sb := StyleBoxFlat.new()
+	sb.draw_center = false
+	sb.border_color = Color(0, 0, 0, 0.9)
+	sb.set_border_width_all(2)
+	sb.set_corner_radius_all(int(rect.size.y * 0.5))
+	_overlay.draw_style_box(sb, rect)
 
 
 ## Shield badge at the bar's inner end (the side facing screen center).

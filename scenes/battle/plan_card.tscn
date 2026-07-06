@@ -4,8 +4,8 @@
 [ext_resource type="Texture2D" uid="uid://cu6ie1rd34g2w" path="res://assets/cards/japan_warrior/japan_back.png" id="2_back"]
 
 [node name="PlanCard" type="Control"]
-custom_minimum_size = Vector2(100, 140)
-size = Vector2(100, 140)
+custom_minimum_size = Vector2(130, 195)
+size = Vector2(130, 195)
 script = ExtResource("1_script")
 
 [node name="Back" type="Control" parent="."]

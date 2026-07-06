@@ -50,6 +50,7 @@ var _player_damage_bonus: int = 0   # from equipped WEAPON
 var _player_crit_chance: int = 0    # from equipped SHOES (0–100 %)
 var _resolve_display: Array[Control] = []  # plan indicator panels, freed each round
 var _intent_displays: Array[Control] = []  # enemy intent chips shown during PLAN phase
+var _intent_popup: Control = null           # hover tooltip for an intent chip
 var _all_cards: Array[CardData] = []  # full collection for the bag view
 var _card_viewer: CardViewer
 # Hand cards discarding on lock-in; freed at the start of _cleanup().
@@ -61,7 +62,7 @@ var _enemy_attack_card: CardData
 var _enemy_recover_card: CardData
 
 var _move_placeholder: GameCard
-var _move_placeholder_home := Vector2(1640.0, 845.0)
+var _move_placeholder_home := Vector2(1490.0, 845.0)
 var _move_picker: MovePicker
 var _move_picker_target_slot: int = -1
 
@@ -105,22 +106,47 @@ func _ready() -> void:
 	_lock_in = get_node_or_null("UI/LockInButton") as Button
 	if _lock_in != null:
 		_lock_in.pressed.connect(_on_lock_in)
-		_lock_in.mouse_entered.connect(_on_lock_in_hover.bind(true))
-		_lock_in.mouse_exited.connect(_on_lock_in_hover.bind(false))
+		_style_lock_in_button()
 
 	_hide_btn = get_node_or_null("UI/HideButton") as Button
 	if _hide_btn != null:
 		_hide_btn.pressed.connect(_on_toggle_hide)
-		_hide_btn.mouse_entered.connect(_on_hide_hover.bind(true))
-		_hide_btn.mouse_exited.connect(_on_hide_hover.bind(false))
+		_style_hide_button()
+		_layout_plan_group.call_deferred()
 
-	var pause_btn := get_node_or_null("UI/BattleHUD/PauseButton") as Button
-	if pause_btn != null:
-		pause_btn.pressed.connect(_on_pause_toggle)
+	# Same ink backdrop as the map scene.
+	var bg := get_node_or_null("Background") as ColorRect
+	if bg != null:
+		bg.material = HudKit.ink_material()
 
-	var bag_btn := get_node_or_null("UI/BattleHUD/BagButton") as Button
-	if bag_btn != null:
-		bag_btn.pressed.connect(_on_bag_pressed)
+	# Top HUD row, mirroring the map: coins/floor left, Round center (scene),
+	# Stats/Inventory/Cards right.
+	var ui_layer := get_node_or_null("UI") as CanvasLayer
+	if ui_layer != null:
+		var coins_panel := HudKit.coins_floor_panel()
+		coins_panel.set_anchors_preset(Control.PRESET_TOP_LEFT)
+		coins_panel.position = Vector2(16, 14)
+		ui_layer.add_child(coins_panel)
+
+		var btns := HBoxContainer.new()
+		btns.add_theme_constant_override("separation", 8)
+		btns.set_anchors_preset(Control.PRESET_TOP_RIGHT)
+		btns.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+		btns.offset_top = 14.0
+		btns.offset_right = -16.0
+		ui_layer.add_child(btns)
+
+		var stats_btn := HudKit.button("Stats", "stats", Color(0.55, 0.85, 0.75))
+		stats_btn.pressed.connect(func(): HudKit.show_stats(self))
+		btns.add_child(stats_btn)
+
+		var inv_btn := HudKit.button("Inventory", "inventory", Color(0.76, 0.55, 0.35))
+		inv_btn.pressed.connect(func(): InventoryOverlay.open(self, true))  # read-only in battle
+		btns.add_child(inv_btn)
+
+		var cards_btn := HudKit.button("Cards", "deck", Color(0.87, 0.52, 0.45))
+		cards_btn.pressed.connect(_on_bag_pressed)
+		btns.add_child(cards_btn)
 
 	_card_viewer = get_node_or_null("UI/CardViewer") as CardViewer
 
@@ -208,12 +234,14 @@ func _begin_plan() -> void:
 ## Show/hide all the card-planning UI. Hidden during the fight so the player can
 ## just watch the board; shown again in the plan phase.
 func _set_planning_ui_visible(on: bool) -> void:
-	for path in ["UI/Hand", "UI/PlanBar", "UI/LockInButton", "UI/HideButton"]:
+	for path in ["UI/Hand", "UI/PlanBar", "UI/LockInButton", "UI/HideButton", "UI/PlanFrame"]:
 		var n := get_node_or_null(path) as CanvasItem
 		if n != null:
 			n.visible = on
 	if _move_placeholder != null:
 		_move_placeholder.visible = on
+	if on:
+		_layout_plan_group.call_deferred()
 
 
 ## A card was dropped onto slot `index`.
@@ -242,6 +270,10 @@ func _on_slot_dropped(index: int, payload: Dictionary) -> void:
 		card = payload.get("card")
 		if card == null:
 			return
+		# Guard: ignore a stray second drop of a card that's already in a slot.
+		for entry in _plan:
+			if entry != null and entry.get("card") == card:
+				return
 		_hand.take_card(card)
 	else:
 		card = CARD_SCENE.instantiate()
@@ -249,15 +281,7 @@ func _on_slot_dropped(index: int, payload: Dictionary) -> void:
 		card.data = data
 
 	var slot = _slot_nodes[index]
-	slot.add_child(card)
-	card.set_anchors_preset(Control.PRESET_TOP_LEFT, false)
-	card.position     = Vector2.ZERO
-	card.rotation     = 0.0
-	card.scale        = Vector2.ONE
-	card.pivot_offset = Vector2.ZERO
-	card.size         = CARD_SIZE
-	card.mouse_filter = Control.MOUSE_FILTER_IGNORE  # let clicks reach the slot (to clear)
-	card.move_to_front()
+	_mount_card_in_slot(card, slot)
 	slot.show_placeholder(false)
 	_plan[index] = {"data": data, "consumable": consumable, "card": card}
 	_refresh_lock_in()
@@ -283,6 +307,11 @@ func _setup_move_placeholder() -> void:
 	_move_placeholder.drag_ended.connect(_on_placeholder_drag_ended)
 	ui.add_child(_move_placeholder)
 	_move_placeholder.position = _move_placeholder_home
+	# Sit behind the discard/deck/hand section (but in front of the plan panel
+	# and enemy intent) by placing it just before the DiscardPile in the tree.
+	var discard := ui.get_node_or_null("DiscardPile")
+	if discard != null:
+		ui.move_child(_move_placeholder, discard.get_index())
 
 	_move_picker = MovePicker.new()
 	ui.add_child(_move_picker)
@@ -307,17 +336,32 @@ func _on_move_picker_chosen(cd: CardData) -> void:
 	card.consumable   = false
 	card.data         = cd
 	var slot          = _slot_nodes[index]
-	slot.add_child(card)
+	_mount_card_in_slot(card, slot)
+	slot.show_placeholder(false)
+	_plan[index] = {"data": cd, "consumable": false, "card": card}
+	_refresh_lock_in()
+
+
+## Put a full-size card into a plan slot, scaled to fit via a wrapper Control.
+## We scale the wrapper (not the card) because GameCard rewrites its own `scale`
+## every frame, and resizing `card_size` would distort the card's fixed-offset
+## children — a uniform wrapper scale keeps the card pixel-perfect, just smaller.
+func _mount_card_in_slot(card: GameCard, slot: Control) -> void:
+	var slot_size: Vector2 = slot.size if slot.size.x > 1.0 else slot.custom_minimum_size
+	var holder := Control.new()
+	holder.name = "CardHolder"
+	holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	holder.scale = slot_size / CARD_SIZE
+	slot.add_child(holder)
+	if card.get_parent() != null:
+		card.get_parent().remove_child(card)   # detach from hand/old slot first
+	holder.add_child(card)
+	card.card_size    = CARD_SIZE
 	card.set_anchors_preset(Control.PRESET_TOP_LEFT, false)
 	card.position     = Vector2.ZERO
 	card.rotation     = 0.0
 	card.scale        = Vector2.ONE
-	card.pivot_offset = Vector2.ZERO
-	card.size         = CARD_SIZE
-	card.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	slot.show_placeholder(false)
-	_plan[index] = {"data": cd, "consumable": false, "card": card}
-	_refresh_lock_in()
+	card.mouse_filter = Control.MOUSE_FILTER_IGNORE  # let clicks reach the slot (to clear)
 
 
 ## Clear slot `index` AND every slot after it. Consumable cards return to the hand.
@@ -330,12 +374,18 @@ func _clear_from(index: int) -> void:
 			continue
 		var card: GameCard = entry.card
 		var slot = _slot_nodes[j]
-		if is_instance_valid(card) and card.get_parent() == slot:
-			slot.remove_child(card)
+		var holder: Node = card.get_parent() if is_instance_valid(card) else null
 		if entry.consumable and is_instance_valid(card):
 			card.mouse_filter = Control.MOUSE_FILTER_STOP
-			card.size = CARD_SIZE
-			_hand.return_card(card)
+			card.card_size = CARD_SIZE
+			card.scale = Vector2.ONE
+			if is_instance_valid(holder):
+				holder.remove_child(card)         # detach before the hand re-adopts it
+			_hand.return_card(card)               # puts the card back into the hand
+			if is_instance_valid(holder):
+				holder.queue_free()               # discard the now-empty wrapper
+		elif is_instance_valid(holder):
+			holder.queue_free()                   # frees the card child with it
 		elif is_instance_valid(card):
 			card.queue_free()
 		slot.show_placeholder(true)
@@ -354,10 +404,31 @@ func _projected_energy() -> int:
 	return e
 
 
-func _on_lock_in_hover(is_hovered: bool) -> void:
-	var mat := _lock_in.material as ShaderMaterial
-	if mat and mat.get_shader_parameter("active"):
-		mat.set_shader_parameter("hovered", is_hovered)
+## Give the plain lock-in button an on-tone green look with a grayed-out
+## disabled state (Godot swaps in the matching stylebox automatically).
+func _style_lock_in_button() -> void:
+	if _lock_in == null:
+		return
+	_lock_in.text = "Lock In"
+	_lock_in.focus_mode = Control.FOCUS_NONE
+	_lock_in.add_theme_font_size_override("font_size", 20)
+	_lock_in.add_theme_color_override("font_color", Color(0.85, 1.0, 0.90))
+	_lock_in.add_theme_color_override("font_hover_color", Color.WHITE)
+	_lock_in.add_theme_color_override("font_disabled_color", Color(0.52, 0.56, 0.60))
+	var palette := {
+		"normal":   [Color(0.10, 0.28, 0.15, 0.95), Color(0.35, 0.85, 0.45, 0.90)],
+		"hover":    [Color(0.14, 0.38, 0.20, 0.98), Color(0.55, 1.00, 0.60, 1.00)],
+		"pressed":  [Color(0.08, 0.22, 0.12, 0.98), Color(0.35, 0.85, 0.45, 0.90)],
+		"disabled": [Color(0.12, 0.13, 0.15, 0.85), Color(0.30, 0.33, 0.38, 0.70)],
+	}
+	for state in palette:
+		var sb := StyleBoxFlat.new()
+		sb.set_corner_radius_all(10)
+		sb.set_content_margin_all(8.0)
+		sb.bg_color     = palette[state][0]
+		sb.border_color = palette[state][1]
+		sb.set_border_width_all(2)
+		_lock_in.add_theme_stylebox_override(state, sb)
 
 
 func _refresh_lock_in() -> void:
@@ -366,11 +437,7 @@ func _refresh_lock_in() -> void:
 		if entry != null:
 			n += 1
 	if _lock_in != null:
-		var ready := n == MAX_SLOTS
-		_lock_in.disabled = not ready
-		var mat := _lock_in.material as ShaderMaterial
-		if mat:
-			mat.set_shader_parameter("active", ready)
+		_lock_in.disabled = n != MAX_SLOTS
 	_update_slot_states()
 
 
@@ -388,10 +455,83 @@ func _update_slot_states() -> void:
 const _ICON_PAUSE  := preload("res://assets/ui/icon_pause.png")
 const _ICON_RESUME := preload("res://assets/ui/icon_resume.png")
 
-func _on_hide_hover(is_hovered: bool) -> void:
-	var mat := _hide_btn.material as ShaderMaterial
-	if mat:
-		mat.set_shader_parameter("hovered", is_hovered)
+## Give the plain hide button a dark, on-tone look (normal + hover states).
+func _style_hide_button() -> void:
+	if _hide_btn == null:
+		return
+	_hide_btn.text = "Hide Plan"
+	_hide_btn.focus_mode = Control.FOCUS_NONE
+	_hide_btn.add_theme_font_size_override("font_size", 15)
+	_hide_btn.add_theme_color_override("font_color", Color(0.82, 0.86, 0.94))
+	_hide_btn.add_theme_color_override("font_hover_color", Color(1.0, 1.0, 1.0))
+	for state in ["normal", "hover", "pressed"]:
+		var sb := StyleBoxFlat.new()
+		sb.set_corner_radius_all(8)
+		sb.set_content_margin_all(6.0)
+		sb.bg_color     = Color(0.10, 0.12, 0.16, 0.90)
+		sb.border_color = Color(0.45, 0.52, 0.65, 0.80)
+		sb.set_border_width_all(1)
+		if state == "hover":
+			sb.bg_color     = Color(0.16, 0.19, 0.25, 0.95)
+			sb.border_color = Color(0.70, 0.80, 1.0, 0.90)
+		elif state == "pressed":
+			sb.bg_color = Color(0.07, 0.08, 0.11, 0.95)
+		_hide_btn.add_theme_stylebox_override(state, sb)
+
+
+const _HIDE_GAP := 10.0    # gap between Hide button and the slot row
+const _LOCK_GAP := 16.0    # gap between the slot row and Lock In button
+const _FRAME_PAD := 18.0   # padding of the background frame around the group
+
+## Lay out the plan group as one tidy unit: Hide Plan centered above the slot
+## row, Lock In centered below it, and a translucent frame around the whole
+## thing. Positions are derived from the plan bar's rect so they stay aligned.
+func _layout_plan_group() -> void:
+	var plan_bar := get_node_or_null("UI/PlanBar") as Control
+	if plan_bar == null:
+		return
+	var row := plan_bar.get_global_rect()
+	var cx := row.position.x + row.size.x * 0.5
+
+	if _hide_btn != null:
+		var hs := _hide_btn.size
+		if hs.x < 1.0:
+			hs = _hide_btn.custom_minimum_size
+		_hide_btn.global_position = Vector2(cx - hs.x * 0.5, row.position.y - _HIDE_GAP - hs.y)
+
+	if _lock_in != null:
+		var ls := _lock_in.size
+		if ls.x < 1.0:
+			ls = _lock_in.custom_minimum_size
+		_lock_in.global_position = Vector2(cx - ls.x * 0.5, row.end.y + _LOCK_GAP)
+
+	_layout_plan_frame(row)
+
+
+## Build/position the translucent frame that visually contains the plan group.
+func _layout_plan_frame(row: Rect2) -> void:
+	var ui := get_node_or_null("UI")
+	if ui == null:
+		return
+	var frame := ui.get_node_or_null("PlanFrame") as Panel
+	if frame == null:
+		frame = Panel.new()
+		frame.name = "PlanFrame"
+		frame.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		var sb := StyleBoxFlat.new()
+		sb.bg_color = Color(0.05, 0.06, 0.09, 0.55)
+		sb.border_color = Color(0.32, 0.37, 0.47, 0.55)
+		sb.set_border_width_all(1)
+		sb.set_corner_radius_all(14)
+		frame.add_theme_stylebox_override("panel", sb)
+		ui.add_child(frame)
+		ui.move_child(frame, 0)   # draw behind the slots and buttons
+	var hide_h := _hide_btn.custom_minimum_size.y if _hide_btn != null else 0.0
+	var lock_h := _lock_in.custom_minimum_size.y if _lock_in != null else 0.0
+	var top := row.position.y - _HIDE_GAP - hide_h - _FRAME_PAD
+	var bottom := row.end.y + _LOCK_GAP + lock_h + _FRAME_PAD
+	frame.global_position = Vector2(row.position.x - _FRAME_PAD, top)
+	frame.size = Vector2(row.size.x + _FRAME_PAD * 2.0, bottom - top)
 
 
 func _on_toggle_hide() -> void:
@@ -399,11 +539,31 @@ func _on_toggle_hide() -> void:
 	var show := not (plan_bar != null and plan_bar.visible)
 	if plan_bar != null:
 		plan_bar.visible = show
+	var frame := get_node_or_null("UI/PlanFrame") as CanvasItem
+	if frame != null:
+		frame.visible = show
+	if _lock_in != null:
+		_lock_in.visible = show
 	if _hide_btn != null:
-		var mat := _hide_btn.material as ShaderMaterial
-		if mat:
-			mat.set_shader_parameter("active", not show)
-			mat.set_shader_parameter("hovered", false)
+		_hide_btn.text = "Hide Plan" if show else "Show Plan"
+	# While the plan is hidden there are no slots to drop into, so freeze the
+	# hand (and move card) and the Lock In button.
+	_set_hand_interactable(show)
+	if show:
+		_refresh_lock_in()      # restore Lock In's enabled/disabled state
+	elif _lock_in != null:
+		_lock_in.disabled = true
+
+
+## Enable/disable dragging cards out of the hand (and the move card) — used to
+## freeze planning input while the plan is hidden.
+func _set_hand_interactable(on: bool) -> void:
+	if _hand != null:
+		for c in _hand.get_children():
+			if c is GameCard:
+				c.undraggable = not on
+	if _move_placeholder != null:
+		_move_placeholder.undraggable = not on
 
 
 ## Pause / resume. The PauseButton + overlay run with PROCESS_MODE_ALWAYS so they
@@ -486,74 +646,192 @@ func _enemy_decide() -> Array:
 # ── Enemy intent display ──────────────────────────────────────────────────────
 
 func _show_enemy_intent() -> void:
-	var ui := get_node_or_null("UI") as CanvasLayer
-	if ui == null:
+	if _enemy == null or not is_instance_valid(_enemy):
 		return
 	_clear_enemy_intent()
 
-	# Sits just below the enemy HUD panel (x 1460–1900, y 16–92),
-	# aligned to its left edge so nothing overlaps the bars.
-	var header := Label.new()
-	header.text = "Enemy intent:"
-	header.add_theme_font_size_override("font_size", 13)
-	header.modulate = Color(0.85, 0.50, 0.50)
-	header.position = Vector2(1460.0, 102.0)
-	ui.add_child(header)
-	_intent_displays.append(header)
+	# A compact row of symbol chips floating just above the enemy token's head.
+	# Held in a UI container parked at the enemy's screen position, sitting in
+	# the tree just above the PlanBar but below the piles/hand/viewer — so the
+	# intent draws over the plan panel yet never over the hand or card lists.
+	# Chips read left→right in the same order the actions resolve.
+	const CHIP := Vector2(48.0, 44.0)
+	const GAP := 6.0
+	var n := _enemy_plan.size()
+	if n == 0:
+		return
+	var root := _intent_root()
+	if root == null:
+		return
+	root.position = _enemy.global_position
+	var total := n * CHIP.x + (n - 1) * GAP
+	var start_x := -total * 0.5
+	var top_y := -(_enemy.box_size * 0.5) - CHIP.y - 16.0
 
-	for i in _enemy_plan.size():
+	for i in n:
 		var cd: CardData = _enemy_plan[i]
 		var chip := Panel.new()
-		chip.size = Vector2(110.0, 36.0)
-		chip.position = Vector2(1460.0 + i * 118.0, 124.0)
+		chip.size = CHIP
+		chip.position = Vector2(start_x + i * (CHIP.x + GAP), top_y)
+		chip.mouse_filter = Control.MOUSE_FILTER_IGNORE
 
 		var style := StyleBoxFlat.new()
-		style.corner_radius_top_left     = 6
-		style.corner_radius_top_right    = 6
-		style.corner_radius_bottom_left  = 6
-		style.corner_radius_bottom_right = 6
-		style.set_border_width_all(1)
+		style.set_corner_radius_all(8)
+		style.set_border_width_all(2)
+		style.shadow_color = Color(0, 0, 0, 0.5)
+		style.shadow_size = 3
 
-		var lbl := Label.new()
-		lbl.set_anchors_preset(Control.PRESET_FULL_RECT)
-		lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		lbl.vertical_alignment   = VERTICAL_ALIGNMENT_CENTER
-		lbl.add_theme_font_size_override("font_size", 13)
-		lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		# Big symbol glyph, centered.
+		var glyph := Label.new()
+		glyph.set_anchors_preset(Control.PRESET_FULL_RECT)
+		glyph.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		glyph.vertical_alignment   = VERTICAL_ALIGNMENT_CENTER
+		glyph.add_theme_font_size_override("font_size", 28)
+		glyph.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))
+		glyph.add_theme_constant_override("outline_size", 5)
+		glyph.mouse_filter = Control.MOUSE_FILTER_IGNORE
 
+		# Small value tag in the bottom-right (damage / energy amount).
+		var tag := Label.new()
+		tag.set_anchors_preset(Control.PRESET_FULL_RECT)
+		tag.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		tag.vertical_alignment   = VERTICAL_ALIGNMENT_BOTTOM
+		tag.add_theme_font_size_override("font_size", 13)
+		tag.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.95))
+		tag.add_theme_constant_override("outline_size", 4)
+		tag.mouse_filter = Control.MOUSE_FILTER_IGNORE
+
+		var desc := ""
 		if cd == null:
-			style.bg_color     = Color(0.12, 0.12, 0.12)
-			style.border_color = Color(0.28, 0.28, 0.28)
-			lbl.text = "—"
+			style.bg_color     = Color(0.10, 0.10, 0.10, 0.9)
+			style.border_color = Color(0.30, 0.30, 0.30)
+			glyph.text = "—"
+			glyph.modulate = Color(0.6, 0.6, 0.6)
+			desc = "The enemy has no planned action here."
 		elif cd.type == CardData.CardType.MOVE:
-			style.bg_color     = Color(0.06, 0.20, 0.09)
-			style.border_color = Color(0.22, 0.68, 0.32)
-			lbl.modulate = Color(0.40, 1.0, 0.55)
+			style.bg_color     = Color(0.05, 0.16, 0.07, 0.92)
+			style.border_color = Color(0.28, 0.72, 0.38)
 			var dir := cd.move_direction
-			var arrow := "→" if dir.x > 0 else "←" if dir.x < 0 else "↓" if dir.y > 0 else "↑"
-			lbl.text = "%s Move" % arrow
+			glyph.text = "→" if dir.x > 0 else "←" if dir.x < 0 else "↓" if dir.y > 0 else "↑"
+			glyph.modulate = Color(0.6, 1.0, 0.7)
+			var word := "right" if dir.x > 0 else "left" if dir.x < 0 else "down" if dir.y > 0 else "up"
+			desc = "The enemy is about to move %s." % word
 		elif cd.type == CardData.CardType.ATTACK:
-			style.bg_color     = Color(0.22, 0.05, 0.05)
-			style.border_color = Color(0.80, 0.20, 0.20)
-			lbl.modulate = Color(1.0, 0.42, 0.42)
-			lbl.text = "⚔ %d dmg" % cd.damage
+			style.bg_color     = Color(0.24, 0.04, 0.04, 0.94)
+			style.border_color = Color(0.95, 0.25, 0.22)
+			glyph.text = "!"
+			glyph.add_theme_font_size_override("font_size", 34)
+			glyph.modulate = Color(1.0, 0.35, 0.32)
+			tag.text = str(cd.damage)
+			tag.modulate = Color(1.0, 0.85, 0.6)
+			desc = "The enemy is about to attack for %d damage!" % cd.damage
 		else:
-			style.bg_color     = Color(0.06, 0.10, 0.24)
-			style.border_color = Color(0.25, 0.52, 0.90)
-			lbl.modulate = Color(0.55, 0.75, 1.0)
-			lbl.text = "✦ +%d" % cd.energy_gain
+			style.bg_color     = Color(0.05, 0.09, 0.24, 0.92)
+			style.border_color = Color(0.30, 0.58, 0.95)
+			glyph.text = "✦"
+			glyph.modulate = Color(0.6, 0.8, 1.0)
+			tag.text = "+%d" % cd.energy_gain
+			tag.modulate = Color(0.7, 0.88, 1.0)
+			desc = "The enemy is about to recover +%d energy." % cd.energy_gain
 
 		chip.add_theme_stylebox_override("panel", style)
-		chip.add_child(lbl)
-		ui.add_child(chip)
+		chip.add_child(glyph)
+		chip.add_child(tag)
+		root.add_child(chip)
 		_intent_displays.append(chip)
+
+		# Hover → simple popup describing the intent.
+		chip.mouse_filter = Control.MOUSE_FILTER_STOP
+		var cx := chip.position.x + CHIP.x * 0.5
+		var cdesc := desc
+		var cclr := Color(style.border_color)
+		chip.mouse_entered.connect(func() -> void: _show_intent_popup(cx, top_y, cdesc, cclr))
+		chip.mouse_exited.connect(_hide_intent_popup)
+
+
+## Container in the UI layer that holds the enemy-intent chips and popup.
+## Enforces the draw order (back→front): PlanBar, Hide, Lock-In, intent — so the
+## intent covers the plan panel, while the piles/hand/card-viewer (later in the
+## tree) draw in front of the whole plan group and the intent.
+func _intent_root() -> Control:
+	var ui := get_node_or_null("UI")
+	if ui == null:
+		return null
+	var root := ui.get_node_or_null("EnemyIntent") as Control
+	if root == null:
+		root = Control.new()
+		root.name = "EnemyIntent"
+		root.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		ui.add_child(root)
+	var plan_bar := ui.get_node_or_null("PlanBar")
+	if plan_bar != null:
+		# Move in reverse so they end up as PlanBar, Hide, Lock-In, intent.
+		_move_after(ui, root, plan_bar)
+		if _lock_in != null and _lock_in.get_parent() == ui:
+			_move_after(ui, _lock_in, plan_bar)
+		if _hide_btn != null and _hide_btn.get_parent() == ui:
+			_move_after(ui, _hide_btn, plan_bar)
+	return root
+
+
+func _move_after(parent: Node, child: Node, anchor: Node) -> void:
+	parent.move_child(child, mini(anchor.get_index() + 1, parent.get_child_count() - 1))
 
 
 func _clear_enemy_intent() -> void:
+	_hide_intent_popup()
 	for c in _intent_displays:
 		if is_instance_valid(c):
 			c.queue_free()
 	_intent_displays.clear()
+
+
+## Small floating tooltip above the intent row, centered on `center_x`
+## (in the enemy token's local space, matching the chip positions).
+func _show_intent_popup(center_x: float, row_top: float, text: String, accent: Color) -> void:
+	_hide_intent_popup()
+	if not is_instance_valid(_enemy):
+		return
+	var w := 250.0
+	var h := 54.0
+	var pop := Panel.new()
+	pop.size = Vector2(w, h)
+	pop.position = Vector2(center_x - w * 0.5, row_top - h - 10.0)
+	pop.mouse_filter = Control.MOUSE_FILTER_IGNORE
+
+	var st := StyleBoxFlat.new()
+	st.bg_color = Color(0.06, 0.07, 0.10, 0.97)
+	st.border_color = accent
+	st.set_border_width_all(2)
+	st.set_corner_radius_all(7)
+	st.shadow_color = Color(0, 0, 0, 0.6)
+	st.shadow_size = 5
+	st.content_margin_left = 10.0
+	st.content_margin_right = 10.0
+	pop.add_theme_stylebox_override("panel", st)
+
+	var lbl := Label.new()
+	lbl.set_anchors_preset(Control.PRESET_FULL_RECT)
+	lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	lbl.vertical_alignment   = VERTICAL_ALIGNMENT_CENTER
+	lbl.add_theme_font_size_override("font_size", 15)
+	lbl.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))
+	lbl.add_theme_constant_override("outline_size", 3)
+	lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	lbl.text = text
+	pop.add_child(lbl)
+
+	var root := _intent_root()
+	if root != null:
+		root.add_child(pop)
+	_intent_popup = pop
+
+
+func _hide_intent_popup() -> void:
+	if is_instance_valid(_intent_popup):
+		_intent_popup.queue_free()
+	_intent_popup = null
 
 
 # ── RESOLVE phase ─────────────────────────────────────────────────────────────
@@ -627,6 +905,7 @@ func _cleanup() -> void:
 	if plan_bar != null:
 		plan_bar.visible = true
 
+	var ui := get_node_or_null("UI")
 	var discard_panel := get_node_or_null("UI/DiscardPile") as Control
 	var discard_target := Vector2.INF
 	if discard_panel != null:
@@ -639,16 +918,22 @@ func _cleanup() -> void:
 		if entry == null:
 			continue
 		var card: GameCard = entry.card
-		if entry.consumable:
+		var holder: Node = card.get_parent() if is_instance_valid(card) else null
+		if entry.consumable and is_instance_valid(card) and discard_target != Vector2.INF and ui != null:
 			_deck.discard(entry.data)
-			if is_instance_valid(card) and discard_target != Vector2.INF:
-				card.tween_position(discard_target, 0.35, true)
-				card.tween_scale(Vector2(0.1, 0.1), 0.35)
-				flying.append(card)
+			card.reparent(ui, true)   # out of the wrapper into global space, keep size
+			if is_instance_valid(holder):
+				holder.queue_free()
+			card.tween_position(discard_target, 0.35, true)
+			card.tween_scale(Vector2(0.1, 0.1), 0.35)
+			flying.append(card)
+		else:
+			if entry.consumable:
+				_deck.discard(entry.data)
+			if is_instance_valid(holder):
+				holder.queue_free()   # frees the card child with it
 			elif is_instance_valid(card):
 				card.queue_free()
-		elif is_instance_valid(card):
-			card.queue_free()   # non-consumable slot duplicate — just remove it
 		_slot_nodes[j].show_placeholder(true)
 		_plan[j] = null
 
@@ -784,30 +1069,51 @@ func _update_pile_info() -> void:
 # ── Plan display — card-back reveal during RESOLVE ────────────────────────────
 
 const PLAN_CARD_SCENE := preload("res://scenes/battle/plan_card.tscn")
-const _CARD_W   := 100.0
-const _CARD_H   := 140.0
-const _CARD_GAP := 110.0   # center-to-center spacing between slots
+const _CARD_W   := 130.0   # matches the plan slot size
+const _CARD_H   := 195.0
+const _CARD_GAP := 145.0   # center-to-center spacing between slots
 
 func _show_plan_displays() -> void:
 	var ui := get_node_or_null("UI") as CanvasLayer
 	if ui == null:
 		return
-	# Player row: below PlayerHUD, top-left (y=100)
+	# Both rows sit at the left-center of the battlefield, player above enemy.
+	const LEFT_X := 30.0
+	var player_y := 250.0
+	var enemy_y := player_y + _CARD_H + 62.0
+	# Player row (revealed slots 0..2)
 	for i in MAX_SLOTS:
 		var cd: CardData = _plan[i].data if _plan[i] != null else null
 		var card: PlanCard = PLAN_CARD_SCENE.instantiate()
 		ui.add_child(card)
 		card.setup(cd)
-		card.position = Vector2(20.0 + i * _CARD_GAP, 100.0)
+		card.position = Vector2(LEFT_X + i * _CARD_GAP, player_y)
 		_resolve_display.append(card)
-	# Enemy row: below EnemyHUD, top-right (y=100)
+	# Enemy row (revealed slots MAX_SLOTS+0 .. MAX_SLOTS+2)
 	for i in MAX_SLOTS:
 		var cd: CardData = _enemy_plan[i] if i < _enemy_plan.size() else null
 		var card: PlanCard = PLAN_CARD_SCENE.instantiate()
 		ui.add_child(card)
 		card.setup(cd)
-		card.position = Vector2(1580.0 + i * _CARD_GAP, 100.0)
+		card.position = Vector2(LEFT_X + i * _CARD_GAP, enemy_y)
 		_resolve_display.append(card)
+	# Row labels appended AFTER the 6 cards so slot indexing stays intact.
+	_resolve_display.append(_plan_row_label(ui, "You",
+			Vector2(LEFT_X, player_y - 26.0), Color(0.60, 0.90, 1.0)))
+	_resolve_display.append(_plan_row_label(ui, "Enemy",
+			Vector2(LEFT_X, enemy_y - 26.0), Color(1.0, 0.62, 0.60)))
+
+
+func _plan_row_label(ui: CanvasLayer, text: String, pos: Vector2, color: Color) -> Label:
+	var lbl := Label.new()
+	lbl.text = text
+	lbl.position = pos
+	lbl.add_theme_font_size_override("font_size", 18)
+	lbl.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))
+	lbl.add_theme_constant_override("outline_size", 4)
+	lbl.modulate = color
+	ui.add_child(lbl)
+	return lbl
 
 
 ## Dim inactive slots; flip the active slot pair face-up. Awaitable.

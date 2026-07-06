@@ -1,26 +1,42 @@
-[gd_scene format=3 uid="uid://8ma7qc46ujts"]
+[gd_scene load_steps=2 format=3 uid="uid://8ma7qc46ujts"]
 
-[ext_resource type="Texture2D" uid="uid://d2w6e7lwyjrp7" path="res://assets/ui/icon_deck.png" id="1_deck"]
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_deck"]
+bg_color = Color(0.11, 0.13, 0.18, 0.95)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.42, 0.5, 0.66, 0.85)
+corner_radius_top_left = 8
+corner_radius_top_right = 8
+corner_radius_bottom_right = 8
+corner_radius_bottom_left = 8
 
 [node name="DeckPile" type="Panel" unique_id=1216418759]
 custom_minimum_size = Vector2(110, 130)
+theme_override_styles/panel = SubResource("StyleBoxFlat_deck")
 
-[node name="Icon" type="TextureRect" parent="." unique_id=647478759]
-texture_filter = 2
-layout_mode = 0
-offset_left = 8.0
+[node name="Caption" type="Label" parent="." unique_id=647478759]
+layout_mode = 1
+anchors_preset = 10
+anchor_right = 1.0
 offset_top = 8.0
-offset_right = 56.0
-offset_bottom = 56.0
+offset_bottom = 30.0
 mouse_filter = 2
-texture = ExtResource("1_deck")
-expand_mode = 1
-stretch_mode = 6
+theme_override_colors/font_color = Color(0.62, 0.7, 0.85, 1)
+theme_override_font_sizes/font_size = 15
+text = "Draw"
+horizontal_alignment = 1
+vertical_alignment = 1
 
 [node name="Label" type="Label" parent="." unique_id=1459475374]
-layout_mode = 0
+layout_mode = 1
+anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
+offset_top = 10.0
+mouse_filter = 2
+theme_override_font_sizes/font_size = 40
 text = "0"
 horizontal_alignment = 1
 vertical_alignment = 1

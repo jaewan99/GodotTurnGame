@@ -41,10 +41,13 @@ const TILE := 86.0          # square tile size (px)
 const EQUIP_TILE := 96.0    # equipped slot tile size (px)
 
 var _root: Control
+## When true (opened during a battle) equip/unequip is disabled.
+var _read_only: bool = false
 
 
-static func open(parent: Node) -> InventoryOverlay:
+static func open(parent: Node, read_only: bool = false) -> InventoryOverlay:
 	var ov := InventoryOverlay.new()
+	ov._read_only = read_only
 	parent.add_child(ov)
 	return ov
 
@@ -167,23 +170,30 @@ func _build_equipped(parent: VBoxContainer) -> void:
 			stat_lbl.modulate = Color(0.85, 0.85, 0.6)
 			info.add_child(stat_lbl)
 
-			var unequip_btn := Button.new()
-			unequip_btn.text = "Unequip"
-			unequip_btn.add_theme_font_size_override("font_size", 12)
-			var cap_slot: int = slot_int
-			var cap_ed := ed
-			unequip_btn.pressed.connect(func():
-				GameState.equipment.erase(cap_slot)
-				GameState.inventory.append(cap_ed)
-				_rebuild()
-			)
-			row.add_child(unequip_btn)
+			if not _read_only:
+				var unequip_btn := Button.new()
+				unequip_btn.text = "Unequip"
+				unequip_btn.add_theme_font_size_override("font_size", 12)
+				var cap_slot: int = slot_int
+				var cap_ed := ed
+				unequip_btn.pressed.connect(func():
+					GameState.equipment.erase(cap_slot)
+					GameState.inventory.append(cap_ed)
+					_rebuild()
+				)
+				row.add_child(unequip_btn)
 
 
 # ── Upper right: items grid ───────────────────────────────────────────────────
 
 func _build_items(parent: VBoxContainer) -> void:
 	parent.add_child(_section_label("ITEMS  (%d)" % GameState.inventory.size()))
+	if _read_only:
+		var note := Label.new()
+		note.text = "Equipment is locked during battle."
+		note.add_theme_font_size_override("font_size", 12)
+		note.modulate = Color(0.75, 0.6, 0.5)
+		parent.add_child(note)
 
 	var scr := ScrollContainer.new()
 	scr.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -209,7 +219,7 @@ func _build_items(parent: VBoxContainer) -> void:
 		if ed == null:
 			continue
 		var tile := make_tile(ed, TILE)
-		if EquipmentData.is_equippable(ed):
+		if EquipmentData.is_equippable(ed) and not _read_only:
 			var cap_ed := ed
 			tile.pressed.connect(func():
 				var old := GameState.equipment.get(cap_ed.slot) as EquipmentData

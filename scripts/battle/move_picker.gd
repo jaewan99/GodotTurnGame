@@ -1,14 +1,17 @@
 ## MovePicker
-## Fullscreen modal that appears when the player drops the Move placeholder card
-## onto a plan slot. Shows the five directional move cards; clicking one emits
-## move_chosen so the battlefield can place it. Clicking the backdrop cancels.
+## Appears when the player drops the Move placeholder card onto a plan slot.
+## Shows the five directional move cards in a strip along the bottom of the
+## screen (only the bottom band is dimmed). Clicking one emits move_chosen;
+## clicking anywhere else cancels.
 class_name MovePicker
 extends Control
 
 signal move_chosen(card_data: CardData)
 
 const CARD_SCENE        := preload("res://scenes/cards/card.tscn")
-const PICKER_CARD_SIZE  := Vector2(130, 185)
+# Card at its native 2:3 ratio, sized to sit inside the 30% bottom band with
+# clear margin above and below.
+const PICKER_CARD_SIZE  := Vector2(162, 243)
 
 
 func _ready() -> void:
@@ -16,25 +19,40 @@ func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	visible = false
 
-	var bg := ColorRect.new()
-	bg.color = Color(0.0, 0.0, 0.0, 0.65)
-	bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	bg.mouse_filter = Control.MOUSE_FILTER_STOP
-	bg.gui_input.connect(_on_bg_input)
-	add_child(bg)
+	# Invisible full-screen catcher: click anywhere outside the cards to cancel.
+	var catcher := Control.new()
+	catcher.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	catcher.mouse_filter = Control.MOUSE_FILTER_STOP
+	catcher.gui_input.connect(_on_bg_input)
+	add_child(catcher)
 
-	var panel := PanelContainer.new()
-	panel.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
-	panel.offset_left   = -390.0
-	panel.offset_right  =  390.0
-	panel.offset_top    = -115.0
-	panel.offset_bottom =  115.0
-	add_child(panel)
+	# Dim only the bottom ~30% of the screen where the cards sit.
+	var dim := ColorRect.new()
+	dim.color = Color(0.0, 0.0, 0.0, 0.72)
+	dim.anchor_left = 0.0
+	dim.anchor_right = 1.0
+	dim.anchor_top = 0.7
+	dim.anchor_bottom = 1.0
+	dim.offset_left = 0.0
+	dim.offset_right = 0.0
+	dim.offset_top = 0.0
+	dim.offset_bottom = 0.0
+	dim.mouse_filter = Control.MOUSE_FILTER_STOP
+	dim.gui_input.connect(_on_bg_input)
+	add_child(dim)
 
+	# Card row, centered horizontally along the bottom with padding.
 	var row := HBoxContainer.new()
 	row.alignment = BoxContainer.ALIGNMENT_CENTER
-	row.add_theme_constant_override("separation", 10)
-	panel.add_child(row)
+	row.add_theme_constant_override("separation", 28)
+	row.anchor_left = 0.5
+	row.anchor_right = 0.5
+	row.anchor_top = 1.0
+	row.anchor_bottom = 1.0
+	row.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	row.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	row.offset_bottom = -40.0   # centers the cards in the band (margin top & bottom)
+	add_child(row)
 
 	for id in MovePool.MOVE_IDS:
 		var card: GameCard = CARD_SCENE.instantiate()
