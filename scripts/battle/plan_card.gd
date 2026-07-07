@@ -15,6 +15,9 @@ var _card: GameCard
 
 func _ready() -> void:
 	pivot_offset = size / 2.0
+	# Children ignore the mouse so the PlanCard root receives hover events.
+	_back.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_front.mouse_filter = Control.MOUSE_FILTER_IGNORE
 
 
 ## Call once after instantiating to bind the CardData.

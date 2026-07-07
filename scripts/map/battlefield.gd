@@ -49,6 +49,7 @@ var _round: int = 0                 # current round number (shown top-center)
 var _player_damage_bonus: int = 0   # from equipped WEAPON
 var _player_crit_chance: int = 0    # from equipped SHOES (0–100 %)
 var _resolve_display: Array[Control] = []  # plan indicator panels, freed each round
+var _reveal_tooltip: Control = null        # enlarged card shown while hovering a reveal
 var _intent_displays: Array[Control] = []  # enemy intent chips shown during PLAN phase
 var _intent_popup: Control = null           # hover tooltip for an intent chip
 var _all_cards: Array[CardData] = []  # full collection for the bag view
@@ -204,7 +205,8 @@ func _place_tokens() -> void:
 
 # ── PLAN phase ────────────────────────────────────────────────────────────────
 func _begin_plan() -> void:
-	_clear_plan_displays()
+	# Last round's reveal stays up through this plan phase as a guide to the
+	# enemy's patterns; it's replaced when the next reveal is shown.
 	_phase = Phase.PLAN
 	_plan = [null, null, null]
 	_enemy_plan = []
@@ -490,6 +492,14 @@ func _layout_plan_group() -> void:
 	var plan_bar := get_node_or_null("UI/PlanBar") as Control
 	if plan_bar == null:
 		return
+	# Centre the panel horizontally in the gap between the board's right edge and
+	# the screen edge, so it has equal margins on both sides.
+	var bar_w := plan_bar.size.x if plan_bar.size.x > 1.0 else 422.0
+	var board := get_node_or_null("Board") as Board
+	if board != null:
+		var board_right := board.global_position.x + board.columns * board.cell_size * 0.5
+		var screen_right := get_viewport_rect().size.x
+		plan_bar.position.x = (board_right + screen_right) * 0.5 - bar_w * 0.5
 	var row := plan_bar.get_global_rect()
 	var cx := row.position.x + row.size.x * 0.5
 
@@ -896,6 +906,12 @@ func _resolve() -> void:
 		if _player.is_dead() or _enemy.is_dead():
 			break
 
+	# Un-dim the reveal cards so the persisting guide stays clearly readable
+	# (leave the row labels' own colours intact).
+	for c in _resolve_display:
+		if is_instance_valid(c) and c is PlanCard:
+			c.modulate = Color.WHITE
+
 	_cleanup()
 
 
@@ -1073,38 +1089,193 @@ const _CARD_W   := 130.0   # matches the plan slot size
 const _CARD_H   := 195.0
 const _CARD_GAP := 145.0   # center-to-center spacing between slots
 
+## Parent for the reveal cards, in the world's default canvas — above the board
+## but BELOW the UI CanvasLayer and every popup (deck/discard, inventory, stats,
+## card viewer), so those always cover the reveal.
+func _reveal_root() -> Control:
+	var r := get_node_or_null("RevealRoot") as Control
+	if r == null:
+		r = Control.new()
+		r.name = "RevealRoot"
+		r.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		add_child(r)
+	return r
+
+
 func _show_plan_displays() -> void:
-	var ui := get_node_or_null("UI") as CanvasLayer
-	if ui == null:
-		return
+	_clear_plan_displays()   # drop the previous round's reveal before showing this one
+	var root := _reveal_root()
 	# Both rows sit at the left-center of the battlefield, player above enemy.
 	const LEFT_X := 30.0
-	var player_y := 250.0
+	var player_y := 258.0
 	var enemy_y := player_y + _CARD_H + 62.0
+	# Framed box behind the two rows (added first so it draws behind the cards).
+	var deco := _build_reveal_box(root, LEFT_X, player_y, enemy_y)
 	# Player row (revealed slots 0..2)
 	for i in MAX_SLOTS:
 		var cd: CardData = _plan[i].data if _plan[i] != null else null
-		var card: PlanCard = PLAN_CARD_SCENE.instantiate()
-		ui.add_child(card)
-		card.setup(cd)
-		card.position = Vector2(LEFT_X + i * _CARD_GAP, player_y)
-		_resolve_display.append(card)
+		_resolve_display.append(_add_reveal_card(root, cd, _player,
+				Vector2(LEFT_X + i * _CARD_GAP, player_y)))
 	# Enemy row (revealed slots MAX_SLOTS+0 .. MAX_SLOTS+2)
 	for i in MAX_SLOTS:
 		var cd: CardData = _enemy_plan[i] if i < _enemy_plan.size() else null
-		var card: PlanCard = PLAN_CARD_SCENE.instantiate()
-		ui.add_child(card)
-		card.setup(cd)
-		card.position = Vector2(LEFT_X + i * _CARD_GAP, enemy_y)
-		_resolve_display.append(card)
+		_resolve_display.append(_add_reveal_card(root, cd, _enemy,
+				Vector2(LEFT_X + i * _CARD_GAP, enemy_y)))
 	# Row labels appended AFTER the 6 cards so slot indexing stays intact.
-	_resolve_display.append(_plan_row_label(ui, "You",
+	_resolve_display.append(_plan_row_label(root, "You",
 			Vector2(LEFT_X, player_y - 26.0), Color(0.60, 0.90, 1.0)))
-	_resolve_display.append(_plan_row_label(ui, "Enemy",
+	_resolve_display.append(_plan_row_label(root, "Enemy",
 			Vector2(LEFT_X, enemy_y - 26.0), Color(1.0, 0.62, 0.60)))
+	# Box parts tracked last (they're already behind the cards in the tree).
+	for d in deco:
+		_resolve_display.append(d)
 
 
-func _plan_row_label(ui: CanvasLayer, text: String, pos: Vector2, color: Color) -> Label:
+## Framed backdrop for the reveal: a rounded box with a title and a divider
+## between the You / Enemy rows. Added to `root` before the cards so it sits
+## behind them; returns its parts for lifetime tracking.
+func _build_reveal_box(root: Node, left_x: float, player_y: float, enemy_y: float) -> Array:
+	var pad_x := 16.0
+	var box_left := left_x - pad_x
+	var box_w := 2.0 * _CARD_GAP + _CARD_W + pad_x * 2.0
+	var box_top := player_y - 58.0
+	var box_bottom := enemy_y + _CARD_H + 14.0
+
+	var box := Panel.new()
+	box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	box.position = Vector2(box_left, box_top)
+	box.size = Vector2(box_w, box_bottom - box_top)
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color(0.06, 0.07, 0.11, 0.90)
+	sb.border_color = Color(0.40, 0.46, 0.58, 0.75)
+	sb.set_border_width_all(2)
+	sb.set_corner_radius_all(16)
+	sb.shadow_color = Color(0.0, 0.0, 0.0, 0.55)
+	sb.shadow_size = 8
+	box.add_theme_stylebox_override("panel", sb)
+	root.add_child(box)
+
+	var title := Label.new()
+	title.text = "Last Round"
+	title.position = Vector2(box_left, box_top + 8.0)
+	title.size = Vector2(box_w, 22.0)
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.add_theme_font_size_override("font_size", 15)
+	title.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.8))
+	title.add_theme_constant_override("outline_size", 3)
+	title.modulate = Color(0.74, 0.80, 0.92)
+	title.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	root.add_child(title)
+
+	var div := ColorRect.new()
+	div.color = Color(0.35, 0.40, 0.50, 0.5)
+	div.position = Vector2(box_left + 14.0, player_y + _CARD_H + 9.0)
+	div.size = Vector2(box_w - 28.0, 2.0)
+	div.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	root.add_child(div)
+
+	return [box, title, div]
+
+
+## One reveal card. Hovering it enlarges the card and highlights the cells that
+## card would hit/reach on the board, from its caster's position and facing.
+func _add_reveal_card(parent: Node, cd: CardData, token: Token, pos: Vector2) -> PlanCard:
+	var card: PlanCard = PLAN_CARD_SCENE.instantiate()
+	parent.add_child(card)
+	card.setup(cd)
+	card.position = pos
+	if cd != null:
+		card.mouse_filter = Control.MOUSE_FILTER_STOP
+		card.mouse_entered.connect(_on_reveal_hover.bind(cd, token, card))
+		card.mouse_exited.connect(_on_reveal_unhover)
+	else:
+		card.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	return card
+
+
+func _on_reveal_hover(cd: CardData, token: Token, card: Control) -> void:
+	_show_reveal_tooltip(cd, card)
+	_highlight_for(cd, token)
+
+
+func _on_reveal_unhover() -> void:
+	_hide_reveal_tooltip()
+	clear_range_highlight()
+
+
+## Highlight the board cells a card affects, from `token`'s cell — mirroring
+## _do_action: MOVE is absolute (uses move_direction), ATTACK is facing-relative.
+func _highlight_for(cd: CardData, token: Token) -> void:
+	if cd == null or token == null:
+		return
+	var board := get_node_or_null("Board") as Board
+	if board == null:
+		return
+	var is_move := cd.type == CardData.CardType.MOVE
+	var cells: Array[Vector2i] = []
+	if is_move:
+		# Moves apply move_direction in absolute board space (no facing flip).
+		if cd.move_direction != Vector2i.ZERO:
+			cells.append(cd.move_direction)
+		for offset in cd.affected_cells:
+			cells.append(offset)
+	else:
+		var fx := token.get_facing().x
+		for offset in cd.affected_cells:
+			cells.append(Vector2i(offset.x * fx, offset.y))
+	if cells.is_empty():
+		return
+	board.highlight_cells(cells, token.current_cell, is_move)
+
+
+# ── Enlarged card tooltip (hover a reveal card) ───────────────────────────────
+
+func _reveal_tooltip_layer() -> CanvasLayer:
+	var l := get_node_or_null("RevealTooltipLayer") as CanvasLayer
+	if l == null:
+		l = CanvasLayer.new()
+		l.name = "RevealTooltipLayer"
+		l.layer = 15
+		add_child(l)
+	return l
+
+
+func _show_reveal_tooltip(cd: CardData, card: Control) -> void:
+	_hide_reveal_tooltip()
+	if cd == null:
+		return
+	const BIG := Vector2(260.0, 390.0)
+	# Full-size card in a wrapper scaled up — enlarged with no distortion.
+	var holder := Control.new()
+	holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	holder.scale = BIG / CARD_SIZE
+	var gc: GameCard = CARD_SCENE.instantiate()
+	gc.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	gc.focus_mode = Control.FOCUS_NONE
+	gc.undraggable = true
+	gc.data = cd
+	holder.add_child(gc)
+	gc.card_size = CARD_SIZE
+	gc.set_anchors_preset(Control.PRESET_TOP_LEFT, false)
+	gc.position = Vector2.ZERO
+	gc.scale = Vector2.ONE
+	# Centre the enlarged card on the hovered reveal card, clamped on-screen.
+	var center := card.global_position + card.size * 0.5
+	var pos := center - BIG * 0.5
+	pos.x = clampf(pos.x, 10.0, 1920.0 - BIG.x - 10.0)
+	pos.y = clampf(pos.y, 10.0, 1080.0 - BIG.y - 10.0)
+	holder.position = pos
+	_reveal_tooltip_layer().add_child(holder)
+	_reveal_tooltip = holder
+
+
+func _hide_reveal_tooltip() -> void:
+	if is_instance_valid(_reveal_tooltip):
+		_reveal_tooltip.queue_free()
+	_reveal_tooltip = null
+
+
+func _plan_row_label(parent: Node, text: String, pos: Vector2, color: Color) -> Label:
 	var lbl := Label.new()
 	lbl.text = text
 	lbl.position = pos
@@ -1112,7 +1283,7 @@ func _plan_row_label(ui: CanvasLayer, text: String, pos: Vector2, color: Color) 
 	lbl.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))
 	lbl.add_theme_constant_override("outline_size", 4)
 	lbl.modulate = color
-	ui.add_child(lbl)
+	parent.add_child(lbl)
 	return lbl
 
 
@@ -1134,6 +1305,8 @@ func _reveal_slot_indicators(slot: int) -> void:
 
 
 func _clear_plan_displays() -> void:
+	_hide_reveal_tooltip()
+	clear_range_highlight()
 	for c in _resolve_display:
 		if is_instance_valid(c):
 			c.queue_free()
