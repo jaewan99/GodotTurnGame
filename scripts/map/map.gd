@@ -9,6 +9,13 @@ extends Control
 
 const BATTLE_SCENE := "res://scenes/map/battlefield.tscn"
 
+## Actual card visual reused on deck-editing screens (forge / remove / upgrade).
+const CARD_SCENE := preload("res://scenes/cards/card.tscn")
+## Display size for those picker cards. Kept at the card's native 200×300 so the
+## fixed label font sizes stay correctly proportioned (they don't scale with the
+## card size), then laid out in a wrapping, scrollable flow.
+const PICKER_CARD_SIZE := Vector2(200, 300)
+
 ## Forge success rate (%) indexed by the card's current level before the attempt.
 ## Level 0→1: 100%, 1→2: 80%, 2→3: 65%, 3→4: 50%, 4→5: 35%, 5→6: 20%, 6+: 10%
 const FORGE_SUCCESS_RATES := [100, 80, 65, 50, 35, 20, 10]
@@ -595,6 +602,62 @@ func _build_event_choice(root: Control, overlay: CanvasLayer) -> void:
 	row.add_child(leave_card)
 
 
+## Clickable tile showing an actual card visual (art, name, live description,
+## "+N" enchant in the name) plus an optional footer line. Used by the deck-
+## editing screens (forge / remove / dojo) instead of plain text buttons.
+func _make_picker_card(cd: CardData, footer: String, enabled: bool, on_pick: Callable) -> Control:
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 4)
+
+	var btn := Button.new()
+	btn.flat = true
+	btn.focus_mode = Control.FOCUS_NONE
+	btn.custom_minimum_size = PICKER_CARD_SIZE
+	btn.disabled = not enabled
+	if enabled and on_pick.is_valid():
+		btn.pressed.connect(on_pick)
+	box.add_child(btn)
+
+	var card: GameCard = CARD_SCENE.instantiate()
+	card.card_size = PICKER_CARD_SIZE
+	card.data = cd
+	card.undraggable = true
+	card.set_anchors_preset(Control.PRESET_FULL_RECT)
+	card.mouse_filter = Control.MOUSE_FILTER_IGNORE   # let clicks reach the Button
+	if not enabled:
+		card.modulate = Color(0.55, 0.55, 0.55)
+	btn.add_child(card)
+
+	if footer != "":
+		var lbl := Label.new()
+		lbl.text = footer
+		lbl.add_theme_font_size_override("font_size", 14)
+		lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		lbl.custom_minimum_size = Vector2(PICKER_CARD_SIZE.x, 0)
+		if not enabled:
+			lbl.modulate = Color(0.55, 0.55, 0.55)
+		box.add_child(lbl)
+
+	return box
+
+
+## A vertical-only ScrollContainer holding a wrapping row of picker cards.
+## Returns the HFlowContainer to populate.
+func _card_picker_flow(parent: Control) -> HFlowContainer:
+	var scroll := ScrollContainer.new()
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	parent.add_child(scroll)
+
+	var flow := HFlowContainer.new()
+	flow.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	flow.add_theme_constant_override("h_separation", 12)
+	flow.add_theme_constant_override("v_separation", 12)
+	scroll.add_child(flow)
+	return flow
+
+
 func _build_forge_select(root: Control, overlay: CanvasLayer) -> void:
 	_clear_children(root)
 
@@ -624,43 +687,29 @@ func _build_forge_select(root: Control, overlay: CanvasLayer) -> void:
 	coins_lbl.text = "Your coins: %d" % GameState.coins
 	coins_row.add_child(coins_lbl)
 
-	var scroll := ScrollContainer.new()
-	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	vbox.add_child(scroll)
-
-	var grid := VBoxContainer.new()
-	grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	grid.add_theme_constant_override("separation", 6)
-	scroll.add_child(grid)
+	var flow := _card_picker_flow(vbox)
 
 	for card in GameState.deck:
+		if card == null or card.type == CardData.CardType.MOVE:
+			continue   # move cards can't be forged
 		var cost := FORGE_BASE_COST * (card.level + 1)
 		var rate: int = FORGE_SUCCESS_RATES[mini(card.level, FORGE_SUCCESS_RATES.size() - 1)]
 		var can_afford := GameState.coins >= cost
 
-		var btn := Button.new()
-		btn.text = "%-18s  Dmg: %2d  Lv.%d  →  Cost: %dg  |  Success: %d%%" % [
-			card.card_name, card.damage, card.level, cost, rate
-		]
-		btn.add_theme_font_size_override("font_size", 16)
-		btn.custom_minimum_size = Vector2(0, 44)
-		btn.disabled = not can_afford
-		if not can_afford:
-			btn.modulate = Color(0.5, 0.5, 0.5)
-
+		var footer := "Cost: %dg  |  %d%%" % [cost, rate]
 		var captured_card := card
 		var captured_cost := cost
 		var captured_rate := rate
-		btn.pressed.connect(func():
+		flow.add_child(_make_picker_card(card, footer, can_afford, func():
 			GameState.coins -= captured_cost
 			_refresh_coins_label()
 			var succeeded := (randi() % 100) < captured_rate
 			if succeeded:
 				captured_card.damage += 2
+				captured_card.upgrades += 1
 			captured_card.level += 1
 			_build_forge_result(captured_card, succeeded, root, overlay)
-		)
-		grid.add_child(btn)
+		))
 
 	var back_btn := Button.new()
 	back_btn.text = "Back"
@@ -689,9 +738,9 @@ func _build_forge_result(card: CardData, succeeded: bool, root: Control, overlay
 	detail_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	detail_lbl.add_theme_font_size_override("font_size", 22)
 	if succeeded:
-		detail_lbl.text = "%s  →  Damage: %d   (Lv.%d)" % [card.card_name, card.damage, card.level]
+		detail_lbl.text = "%s  →  Damage: %d   (Lv.%d)" % [card.display_name(), card.damage, card.level]
 	else:
-		detail_lbl.text = "%s is unchanged.   (Lv.%d)" % [card.card_name, card.level]
+		detail_lbl.text = "%s is unchanged.   (Lv.%d)" % [card.display_name(), card.level]
 	vbox.add_child(detail_lbl)
 
 	var coins_lbl := Label.new()
@@ -748,34 +797,20 @@ func _build_remove_select(root: Control, overlay: CanvasLayer) -> void:
 		warn.modulate = Color(1.0, 0.6, 0.2)
 		vbox.add_child(warn)
 
-	var scroll := ScrollContainer.new()
-	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	vbox.add_child(scroll)
-
-	var grid := VBoxContainer.new()
-	grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	grid.add_theme_constant_override("separation", 6)
-	scroll.add_child(grid)
+	var flow := _card_picker_flow(vbox)
 
 	for card in GameState.deck:
-		var btn := Button.new()
-		btn.text = "%-18s  Dmg: %2d  Lv.%d" % [card.card_name, card.damage, card.level]
-		btn.add_theme_font_size_override("font_size", 16)
-		btn.custom_minimum_size = Vector2(0, 44)
-		btn.disabled = not can_afford or not safe_to_remove
-		if not (can_afford and safe_to_remove):
-			btn.modulate = Color(0.5, 0.5, 0.5)
-
+		if card == null or card.type == CardData.CardType.MOVE:
+			continue   # move cards can't be removed
 		var captured_card := card
-		btn.pressed.connect(func():
+		flow.add_child(_make_picker_card(card, "", can_afford and safe_to_remove, func():
 			GameState.coins -= remove_cost
 			GameState.cards_removed += 1
 			GameState.deck.erase(captured_card)
 			_refresh_coins_label()
 			_close_current_node()
 			overlay.queue_free()
-		)
-		grid.add_child(btn)
+		))
 
 	var back_btn := Button.new()
 	back_btn.text = "Back"
@@ -1133,30 +1168,16 @@ func _build_wizard_view(root: Control, overlay: CanvasLayer) -> void:
 		hint.modulate = Color(0.65, 0.65, 0.65)
 		vbox.add_child(hint)
 
-	var scroll := ScrollContainer.new()
-	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	vbox.add_child(scroll)
-
-	var grid := VBoxContainer.new()
-	grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	grid.add_theme_constant_override("separation", 6)
-	scroll.add_child(grid)
+	var flow := _card_picker_flow(vbox)
 
 	for card in GameState.deck:
-		var btn := Button.new()
-		btn.text = "%-18s  Dmg: %2d  Lv.%d" % [card.card_name, card.damage, card.level]
-		btn.add_theme_font_size_override("font_size", 16)
-		btn.custom_minimum_size = Vector2(0, 44)
-		btn.disabled = not safe_to_remove
-		if not safe_to_remove:
-			btn.modulate = Color(0.5, 0.5, 0.5)
-
+		if card == null or card.type == CardData.CardType.MOVE:
+			continue   # move cards can't be removed
 		var captured_card := card
-		btn.pressed.connect(func():
+		flow.add_child(_make_picker_card(card, "", safe_to_remove, func():
 			GameState.deck.erase(captured_card)
-			_build_wizard_done(captured_card.card_name, root, overlay)
-		)
-		grid.add_child(btn)
+			_build_wizard_done(captured_card.display_name(), root, overlay)
+		))
 
 	var leave_btn := Button.new()
 	leave_btn.text = "Decline"
@@ -2200,29 +2221,21 @@ func _show_dojo_upgrade_overlay() -> void:
 			Color(0.5, 0.9, 0.4), "res://assets/map/nodes/dojo.png")
 	_overlay_text(vbox, "\"Well fought. Choose a technique to perfect.\"  (+2 damage, free)")
 
-	var scroll := ScrollContainer.new()
-	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	scroll.custom_minimum_size = Vector2(0, 320)
-	vbox.add_child(scroll)
-	var grid := VBoxContainer.new()
-	grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	grid.add_theme_constant_override("separation", 6)
-	scroll.add_child(grid)
+	var flow := _card_picker_flow(vbox)
+	(flow.get_parent() as Control).custom_minimum_size = Vector2(0, 320)
 
 	for card in GameState.deck:
-		var btn := Button.new()
-		btn.text = "%-18s  Dmg: %2d  Lv.%d" % [card.card_name, card.damage, card.level]
-		btn.add_theme_font_size_override("font_size", 16)
-		btn.custom_minimum_size = Vector2(0, 44)
+		if card == null or card.type == CardData.CardType.MOVE:
+			continue   # move cards can't be upgraded
 		var cap := card
-		btn.pressed.connect(func():
+		flow.add_child(_make_picker_card(card, "", true, func():
 			cap.damage += 2
+			cap.upgrades += 1
 			cap.level += 1
 			_build_simple_result("Technique perfected!", Color(0.5, 0.9, 0.4),
-					"%s  →  Damage: %d  (Lv.%d)" % [cap.card_name, cap.damage, cap.level],
+					"%s  →  Damage: %d  (Lv.%d)" % [cap.display_name(), cap.damage, cap.level],
 					root, overlay)
-		)
-		grid.add_child(btn)
+		))
 
 
 # ── Bounty node ───────────────────────────────────────────────────────────────

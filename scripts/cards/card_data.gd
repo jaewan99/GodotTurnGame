@@ -33,6 +33,15 @@ enum CardType {
 ## Not exported — .tres template files always start at 0; only live deck copies carry a level.
 var level: int = 0
 
+## Number of *successful* forge upgrades on this instance (each = +2 damage).
+## Drives the "+N" name suffix. Distinct from `level`, which counts attempts.
+var upgrades: int = 0
+
+
+## Display name including the forge suffix: "Slash", "Slash +1", "Slash +2", …
+func display_name() -> String:
+	return "%s +%d" % [card_name, upgrades] if upgrades > 0 else card_name
+
 @export_group("Effect (draft)")
 @export var damage: int = 0                    ## damage dealt, if any (ATTACK)
 @export var block: int = 0                     ## defense gained, if any

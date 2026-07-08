@@ -556,9 +556,10 @@ func _on_toggle_hide() -> void:
 		_lock_in.visible = show
 	if _hide_btn != null:
 		_hide_btn.text = "Hide Plan" if show else "Show Plan"
-	# While the plan is hidden there are no slots to drop into, so freeze the
-	# hand (and move card) and the Lock In button.
-	_set_hand_interactable(show)
+	# While the plan is hidden the slots are gone, so a card can't be dropped into
+	# a plan — but keep the hand draggable so the player can still lift cards to
+	# read them. Only the Lock In button is frozen.
+	_set_hand_interactable(true)
 	if show:
 		_refresh_lock_in()      # restore Lock In's enabled/disabled state
 	elif _lock_in != null:
@@ -1001,11 +1002,13 @@ func _do_action(data: CardData, actor: Token) -> bool:
 		return false
 	match data.type:
 		CardData.CardType.MOVE:
+			actor.play_card(data)
 			actor.move_to_cell(actor.current_cell + data.move_direction)
 			return true
 		CardData.CardType.ATTACK:
 			if not actor.spend_energy(data.cost):
 				return false
+			actor.play_card(data)
 			var facing := actor.get_facing()
 			var dmg := data.damage
 			if actor == _player:
@@ -1030,6 +1033,7 @@ func _do_action(data: CardData, actor: Token) -> bool:
 		CardData.CardType.SKILL:
 			if not actor.spend_energy(data.cost):
 				return false
+			actor.play_card(data)
 			if data.energy_gain > 0:
 				actor.gain_energy(data.energy_gain)
 			return true
@@ -1490,7 +1494,7 @@ func _show_win_reward() -> void:
 	coins_row.add_child(total_lbl)
 
 	var pick_lbl := Label.new()
-	pick_lbl.text = "Flip a reward to reveal it — then take it or pass."
+	pick_lbl.text = "Flip a reward to reveal it, then Take Reward."
 	pick_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	pick_lbl.add_theme_font_size_override("font_size", 20)
 	pick_lbl.modulate = Color(0.80, 0.80, 0.80)
@@ -1501,14 +1505,18 @@ func _show_win_reward() -> void:
 	hbox.add_theme_constant_override("separation", 40)
 	vbox.add_child(hbox)
 
-	var flip_state: Array = [false]
-	for item in choices:
-		if item is CardData:
-			hbox.add_child(_make_reward_card(item as CardData, coins_earned, overlay, flip_state))
-		else:
-			hbox.add_child(_make_reward_equipment(item as EquipmentData, coins_earned, overlay, flip_state))
+	# Action row: Take (enabled once a reward is selected) + Skip (coins only).
+	var action_row := HBoxContainer.new()
+	action_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	action_row.add_theme_constant_override("separation", 20)
+	vbox.add_child(action_row)
 
-	# Skip button — take coins only, no card
+	var take_btn := Button.new()
+	take_btn.text = "Take Reward"
+	take_btn.add_theme_font_size_override("font_size", 18)
+	take_btn.disabled = true
+	action_row.add_child(take_btn)
+
 	var skip_all := Button.new()
 	skip_all.text = "Skip — keep coins only"
 	skip_all.add_theme_font_size_override("font_size", 15)
@@ -1518,191 +1526,154 @@ func _show_win_reward() -> void:
 		_advance_floor_if_boss()
 		get_tree().change_scene_to_file(MAP_SCENE)
 	)
-	vbox.add_child(skip_all)
+	action_row.add_child(skip_all)
+
+	# Build the selectable reward tiles (actual card visuals / item icons).
+	var tiles: Array = []
+	var selected := {"item": null}
+	for item in choices:
+		var tile := _make_reward_tile(item)
+		hbox.add_child(tile["node"])
+		tiles.append(tile)
+
+	# Clicking a tile reveals it (flip) and selects it: glow the choice with the
+	# gold outline, un-glow the rest, and arm Take.
+	for tile in tiles:
+		var this_tile: Dictionary = tile
+		(this_tile["button"] as Button).pressed.connect(func():
+			(this_tile["reveal"] as Callable).call()
+			selected["item"] = this_tile["item"]
+			for t in tiles:
+				(t["set_selected"] as Callable).call(t == this_tile)
+			take_btn.disabled = false
+		)
+
+	take_btn.pressed.connect(func():
+		var it = selected["item"]
+		if it == null:
+			return
+		if it is CardData:
+			_on_reward_chosen(it as CardData, coins_earned, overlay)
+		else:
+			_on_equipment_chosen(it as EquipmentData, coins_earned, overlay)
+	)
 
 
-## Face-down card; clicking it flips to reveal the front.
-## Only the FIRST card flipped gets Take/Pass buttons — the rest are info-only.
-func _make_reward_card(cd: CardData, coins_earned: int, overlay: CanvasLayer,
-		flip_state: Array) -> Control:
-	const W := 200.0; const H := 300.0
-	var container := Control.new()
-	container.custom_minimum_size = Vector2(W, H)
-	container.size                = Vector2(W, H)
-	container.pivot_offset        = Vector2(W * 0.5, H * 0.5)
+## One reward tile. Starts face-down (a "?" card back); clicking it flips to
+## reveal the real card visual (for CardData) or item icon (for EquipmentData).
+## When selected a soft halo glows AROUND the card edges (drawn behind it, so the
+## card face stays crisp). Equipment shows its details on hover once revealed.
+## Returns { node, button, set_selected, reveal, item }.
+func _make_reward_tile(item) -> Dictionary:
+	const W := 200.0
+	const H := 300.0
+	var wrap := Control.new()
+	wrap.custom_minimum_size = Vector2(W, H)
+	wrap.size          = Vector2(W, H)
+	wrap.pivot_offset  = Vector2(W * 0.5, H * 0.5)
 
-	# Back (face-down)
+	# Halo glow — behind everything, so its shadow only shows around the edges.
+	var glow := Panel.new()
+	glow.set_anchors_preset(Control.PRESET_FULL_RECT)
+	glow.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0, 0, 0, 0)
+	style.set_corner_radius_all(10)
+	style.shadow_color = Color(0, 0, 0, 0)   # invisible until selected
+	style.shadow_size  = 0
+	glow.add_theme_stylebox_override("panel", style)
+	wrap.add_child(glow)
+
+	# Face-down back (visible until revealed).
 	var back := Panel.new()
-	back.name = "Back"; back.position = Vector2.ZERO; back.size = Vector2(W, H)
-	back.mouse_filter = Control.MOUSE_FILTER_STOP
+	back.set_anchors_preset(Control.PRESET_FULL_RECT)
+	back.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var bs := StyleBoxFlat.new()
-	bs.bg_color     = Color(0.11, 0.09, 0.16)
-	bs.border_width_left = 2; bs.border_width_right  = 2
-	bs.border_width_top  = 2; bs.border_width_bottom = 2
+	bs.bg_color = Color(0.11, 0.09, 0.16)
+	bs.set_corner_radius_all(10)
+	bs.set_border_width_all(3)
 	bs.border_color = Color(0.52, 0.42, 0.18)
-	bs.corner_radius_top_left    = 8; bs.corner_radius_top_right    = 8
-	bs.corner_radius_bottom_left = 8; bs.corner_radius_bottom_right = 8
 	back.add_theme_stylebox_override("panel", bs)
 	var q := Label.new()
-	q.text = "?"; q.add_theme_font_size_override("font_size", 72)
+	q.text = "?"
+	q.add_theme_font_size_override("font_size", 96)
 	q.modulate = Color(0.42, 0.32, 0.13)
 	q.set_anchors_preset(Control.PRESET_FULL_RECT)
 	q.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	q.vertical_alignment   = VERTICAL_ALIGNMENT_CENTER
+	q.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	back.add_child(q)
-	container.add_child(back)
+	wrap.add_child(back)
 
-	# Front (hidden until flip)
-	var front := _make_reward_card_front(cd, W, H, coins_earned, overlay, container)
-	front.name = "Front"; front.visible = false
-	container.add_child(front)
+	# Front content (hidden until revealed) — fills the tile so the halo hugs it.
+	var front := VBoxContainer.new()
+	front.set_anchors_preset(Control.PRESET_FULL_RECT)
+	front.alignment = BoxContainer.ALIGNMENT_CENTER
+	front.add_theme_constant_override("separation", 6)
+	front.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	front.visible = false
+	wrap.add_child(front)
 
-	# Hover glow + click-to-flip
-	back.mouse_entered.connect(func(): container.modulate = Color(1.25, 1.20, 1.10))
-	back.mouse_exited.connect(func():  container.modulate = Color.WHITE)
-	back.gui_input.connect(func(ev: InputEvent):
-		if ev is InputEventMouseButton and ev.pressed and ev.button_index == MOUSE_BUTTON_LEFT:
-			var is_first: bool = not flip_state[0]
-			flip_state[0] = true
-			# Hide action buttons on cards that are not the first flip.
-			var actions := front.find_child("Actions", true, false)
-			if actions != null:
-				actions.visible = is_first
-			_flip_reward_card(container)
-	)
-	return container
+	if item is CardData:
+		var card: GameCard = CARD_SCENE.instantiate()
+		card.data = item as CardData
+		card.undraggable = true
+		card.mouse_filter = Control.MOUSE_FILTER_IGNORE   # clicks go to the overlay button
+		card.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+		front.add_child(card)
+	else:
+		var ed := item as EquipmentData
+		var tile := InventoryOverlay.make_tile(ed, 150.0)
+		tile.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		tile.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+		front.add_child(tile)
 
+		var name_lbl := Label.new()
+		name_lbl.text = "%s%s" % [ed.equipment_name, EquipmentData.enchant_tag(ed)]
+		name_lbl.add_theme_font_size_override("font_size", 16)
+		name_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		name_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		name_lbl.modulate = EquipmentData.rarity_color(ed.rarity)
+		front.add_child(name_lbl)
 
-func _flip_reward_card(container: Control) -> void:
-	var back  := container.get_node_or_null("Back")  as Control
-	var front := container.get_node_or_null("Front") as Control
-	if back == null or front == null or not back.visible:
-		return
-	container.modulate = Color.WHITE
-	var tw := container.create_tween().set_trans(Tween.TRANS_SINE)
-	tw.tween_property(container, "scale:x", 0.0, 0.15).set_ease(Tween.EASE_IN)
-	tw.tween_callback(func(): back.hide(); front.show())
-	tw.tween_property(container, "scale:x", 1.0, 0.15).set_ease(Tween.EASE_OUT)
+		var stat_lbl := Label.new()
+		stat_lbl.text = EquipmentData.stat_summary(ed)
+		stat_lbl.add_theme_font_size_override("font_size", 13)
+		stat_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		stat_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		stat_lbl.modulate = Color(0.88, 0.88, 0.6)
+		front.add_child(stat_lbl)
 
+	# Transparent click layer covering the whole tile (drawn last = on top).
+	var btn := Button.new()
+	btn.flat = true
+	btn.focus_mode = Control.FOCUS_NONE
+	btn.set_anchors_preset(Control.PRESET_FULL_RECT)
+	wrap.add_child(btn)
 
-func _make_reward_card_front(cd: CardData, W: float, H: float,
-		coins_earned: int, overlay: CanvasLayer, container: Control) -> Panel:
-	var type_color := Color(0.4, 0.4, 0.4)
-	var type_tag: Dictionary = {
-		CardData.CardType.ATTACK: "ATTACK", CardData.CardType.SKILL:  "SKILL",
-		CardData.CardType.POWER:  "POWER",  CardData.CardType.MOVE:   "MOVE",
-	}
-	if cd != null:
-		match cd.type:
-			CardData.CardType.ATTACK: type_color = Color(0.82, 0.25, 0.25)
-			CardData.CardType.SKILL:  type_color = Color(0.25, 0.56, 0.88)
-			CardData.CardType.POWER:  type_color = Color(0.65, 0.25, 0.88)
-			CardData.CardType.MOVE:   type_color = Color(0.25, 0.76, 0.38)
+	# Flip-reveal, once, with a "card opening" scale animation.
+	var revealed := [false]
+	var reveal := func() -> void:
+		if revealed[0]:
+			return
+		revealed[0] = true
+		if item is EquipmentData:
+			btn.tooltip_text = EquipmentData.tooltip(item as EquipmentData)  # details on hover
+		var tw := wrap.create_tween().set_trans(Tween.TRANS_SINE)
+		tw.tween_property(wrap, "scale:x", 0.0, 0.12).set_ease(Tween.EASE_IN)
+		tw.tween_callback(func(): back.hide(); front.show())
+		tw.tween_property(wrap, "scale:x", 1.0, 0.14).set_ease(Tween.EASE_OUT)
 
-	var panel := Panel.new()
-	panel.position = Vector2.ZERO; panel.size = Vector2(W, H)
-	var fs := StyleBoxFlat.new()
-	fs.bg_color     = Color(0.07, 0.06, 0.05)
-	fs.border_width_left = 2; fs.border_width_right  = 2
-	fs.border_width_top  = 2; fs.border_width_bottom = 2
-	fs.border_color = type_color
-	fs.corner_radius_top_left    = 8; fs.corner_radius_top_right    = 8
-	fs.corner_radius_bottom_left = 8; fs.corner_radius_bottom_right = 8
-	panel.add_theme_stylebox_override("panel", fs)
+	# Toggle the halo glow around the card on selection (card face untouched).
+	var set_selected := func(on: bool) -> void:
+		if on:
+			style.shadow_color = Color(1.0, 0.82, 0.28, 0.85)
+			style.shadow_size  = 26
+		else:
+			style.shadow_color = Color(0, 0, 0, 0)
+			style.shadow_size  = 0
 
-	var vbox := VBoxContainer.new()
-	vbox.position = Vector2(10.0, 10.0); vbox.size = Vector2(W - 20.0, H - 20.0)
-	vbox.add_theme_constant_override("separation", 6)
-	panel.add_child(vbox)
-
-	var name_lbl := Label.new()
-	name_lbl.text = cd.card_name if cd != null else "?"
-	name_lbl.add_theme_font_size_override("font_size", 18)
-	name_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	name_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	vbox.add_child(name_lbl)
-	vbox.add_child(HSeparator.new())
-
-	var type_lbl := Label.new()
-	type_lbl.text = type_tag.get(cd.type, "?") if cd != null else ""
-	type_lbl.add_theme_font_size_override("font_size", 12)
-	type_lbl.modulate = type_color
-	type_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	vbox.add_child(type_lbl)
-
-	var cost_lbl := Label.new()
-	cost_lbl.text = "Cost: %d" % (cd.cost if cd != null else 0)
-	cost_lbl.add_theme_font_size_override("font_size", 13)
-	cost_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	vbox.add_child(cost_lbl)
-
-	if cd != null and cd.description.length() > 0:
-		vbox.add_child(HSeparator.new())
-		var desc_lbl := Label.new()
-		desc_lbl.text = cd.description
-		desc_lbl.add_theme_font_size_override("font_size", 12)
-		desc_lbl.modulate = Color(0.82, 0.82, 0.82)
-		desc_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		desc_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		vbox.add_child(desc_lbl)
-
-	var spacer := Control.new()
-	spacer.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	vbox.add_child(spacer)
-	vbox.add_child(HSeparator.new())
-
-	# Take / Pass buttons (hidden on non-first flips via the "Actions" name)
-	var btn_row := HBoxContainer.new()
-	btn_row.name = "Actions"
-	btn_row.alignment = BoxContainer.ALIGNMENT_CENTER
-	btn_row.add_theme_constant_override("separation", 8)
-	vbox.add_child(btn_row)
-
-	var take_btn := Button.new()
-	take_btn.text = "Choose"
-	take_btn.add_theme_font_size_override("font_size", 14)
-	take_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	take_btn.pressed.connect(func():
-		_flip_other_reward_cards(container)
-		await get_tree().create_timer(0.35).timeout
-		_on_reward_chosen(cd, coins_earned, overlay)
-	)
-	btn_row.add_child(take_btn)
-
-	var pass_btn := Button.new()
-	pass_btn.text = "Pass"
-	pass_btn.add_theme_font_size_override("font_size", 14)
-	pass_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	pass_btn.pressed.connect(func():
-		container.modulate = Color(0.40, 0.40, 0.40)
-		take_btn.disabled = true
-		pass_btn.disabled = true
-		_flip_other_reward_cards(container)
-	)
-	btn_row.add_child(pass_btn)
-
-	return panel
-
-
-## Flip every sibling card that is still face-down (no action buttons on them).
-## Finds siblings via the shared parent HBoxContainer — no array needed.
-func _flip_other_reward_cards(current: Control) -> void:
-	var hbox := current.get_parent()
-	if hbox == null:
-		return
-	for i in hbox.get_child_count():
-		var c := hbox.get_child(i) as Control
-		if c == null or c == current:
-			continue
-		var back := c.get_node_or_null("Back") as Control
-		if back == null or not back.visible:
-			continue
-		var front: Node = c.get_node_or_null("Front")
-		if front != null:
-			var actions: Node = front.find_child("Actions", true, false)
-			if actions != null:
-				actions.visible = false
-		_flip_reward_card(c)
+	return {"node": wrap, "button": btn, "set_selected": set_selected, "reveal": reveal, "item": item}
 
 
 func _advance_floor_if_boss() -> void:
@@ -1755,179 +1726,6 @@ func _apply_equipment() -> void:
 			_player.gain_energy(ed.max_energy_bonus)
 		_player_damage_bonus += ed.damage_bonus
 		_player_crit_chance  += ed.crit_chance
-
-
-# ── Equipment reward card ─────────────────────────────────────────────────────
-
-func _make_reward_equipment(ed: EquipmentData, coins_earned: int, overlay: CanvasLayer,
-		flip_state: Array) -> Control:
-	const W := 200.0; const H := 300.0
-	var container := Control.new()
-	container.custom_minimum_size = Vector2(W, H)
-	container.size                = Vector2(W, H)
-	container.pivot_offset        = Vector2(W * 0.5, H * 0.5)
-
-	var back := Panel.new()
-	back.name = "Back"; back.position = Vector2.ZERO; back.size = Vector2(W, H)
-	back.mouse_filter = Control.MOUSE_FILTER_STOP
-	var bs := StyleBoxFlat.new()
-	bs.bg_color     = Color(0.11, 0.09, 0.16)
-	bs.border_width_left = 2; bs.border_width_right  = 2
-	bs.border_width_top  = 2; bs.border_width_bottom = 2
-	bs.border_color = Color(0.52, 0.42, 0.18)
-	bs.corner_radius_top_left    = 8; bs.corner_radius_top_right    = 8
-	bs.corner_radius_bottom_left = 8; bs.corner_radius_bottom_right = 8
-	back.add_theme_stylebox_override("panel", bs)
-	var q := Label.new()
-	q.text = "?"; q.add_theme_font_size_override("font_size", 72)
-	q.modulate = Color(0.42, 0.32, 0.13)
-	q.set_anchors_preset(Control.PRESET_FULL_RECT)
-	q.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	q.vertical_alignment   = VERTICAL_ALIGNMENT_CENTER
-	back.add_child(q)
-	container.add_child(back)
-
-	var front := _make_reward_equipment_front(ed, W, H, coins_earned, overlay, container)
-	front.name = "Front"; front.visible = false
-	container.add_child(front)
-
-	back.mouse_entered.connect(func(): container.modulate = Color(1.25, 1.20, 1.10))
-	back.mouse_exited.connect(func():  container.modulate = Color.WHITE)
-	back.gui_input.connect(func(ev: InputEvent):
-		if ev is InputEventMouseButton and ev.pressed and ev.button_index == MOUSE_BUTTON_LEFT:
-			var is_first: bool = not flip_state[0]
-			flip_state[0] = true
-			var actions := front.find_child("Actions", true, false)
-			if actions != null:
-				actions.visible = is_first
-			_flip_reward_card(container)
-	)
-	return container
-
-
-func _make_reward_equipment_front(ed: EquipmentData, W: float, H: float,
-		coins_earned: int, overlay: CanvasLayer, container: Control) -> Panel:
-	var slot_colors := {
-		EquipmentData.Slot.WEAPON:  Color(0.90, 0.50, 0.20),
-		EquipmentData.Slot.OFFHAND: Color(0.25, 0.56, 0.88),
-		EquipmentData.Slot.CHEST:   Color(0.25, 0.75, 0.45),
-		EquipmentData.Slot.HELM:    Color(0.65, 0.25, 0.88),
-		EquipmentData.Slot.SHOES:   Color(0.20, 0.80, 0.85),
-	}
-	var slot_labels := {
-		EquipmentData.Slot.WEAPON:  "WEAPON",
-		EquipmentData.Slot.OFFHAND: "OFFHAND",
-		EquipmentData.Slot.CHEST:   "CHEST",
-		EquipmentData.Slot.HELM:    "HELM",
-		EquipmentData.Slot.SHOES:   "SHOES",
-	}
-	var slot_color: Color = slot_colors.get(ed.slot, Color(0.6, 0.6, 0.6))
-	var slot_label: String = slot_labels.get(ed.slot, "EQUIP")
-	var rarity_col := EquipmentData.rarity_color(ed.rarity)
-
-	var panel := Panel.new()
-	panel.position = Vector2.ZERO; panel.size = Vector2(W, H)
-	var fs := StyleBoxFlat.new()
-	fs.bg_color     = Color(0.07, 0.06, 0.05)
-	fs.border_width_left = 2; fs.border_width_right  = 2
-	fs.border_width_top  = 2; fs.border_width_bottom = 2
-	fs.border_color = rarity_col
-	fs.corner_radius_top_left    = 8; fs.corner_radius_top_right    = 8
-	fs.corner_radius_bottom_left = 8; fs.corner_radius_bottom_right = 8
-	panel.add_theme_stylebox_override("panel", fs)
-
-	var vbox := VBoxContainer.new()
-	vbox.position = Vector2(10.0, 10.0); vbox.size = Vector2(W - 20.0, H - 20.0)
-	vbox.add_theme_constant_override("separation", 6)
-	panel.add_child(vbox)
-
-	var name_lbl := Label.new()
-	name_lbl.text = ed.equipment_name
-	name_lbl.add_theme_font_size_override("font_size", 18)
-	name_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	name_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	vbox.add_child(name_lbl)
-
-	var rarity_lbl := Label.new()
-	rarity_lbl.text = EquipmentData.rarity_name(ed.rarity)
-	rarity_lbl.add_theme_font_size_override("font_size", 12)
-	rarity_lbl.modulate = rarity_col
-	rarity_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	vbox.add_child(rarity_lbl)
-	vbox.add_child(HSeparator.new())
-
-	var type_lbl := Label.new()
-	type_lbl.text = slot_label
-	type_lbl.add_theme_font_size_override("font_size", 12)
-	type_lbl.modulate = slot_color
-	type_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	vbox.add_child(type_lbl)
-
-	vbox.add_child(HSeparator.new())
-	for stat in _equipment_stat_lines(ed):
-		var sl := Label.new()
-		sl.text = stat
-		sl.add_theme_font_size_override("font_size", 14)
-		sl.modulate = Color(0.90, 0.90, 0.60)
-		sl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		vbox.add_child(sl)
-
-	if ed.description.length() > 0:
-		vbox.add_child(HSeparator.new())
-		var desc_lbl := Label.new()
-		desc_lbl.text = ed.description
-		desc_lbl.add_theme_font_size_override("font_size", 12)
-		desc_lbl.modulate = Color(0.82, 0.82, 0.82)
-		desc_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		desc_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		vbox.add_child(desc_lbl)
-
-	var spacer := Control.new()
-	spacer.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	vbox.add_child(spacer)
-	vbox.add_child(HSeparator.new())
-
-	var btn_row := HBoxContainer.new()
-	btn_row.name = "Actions"
-	btn_row.alignment = BoxContainer.ALIGNMENT_CENTER
-	btn_row.add_theme_constant_override("separation", 8)
-	vbox.add_child(btn_row)
-
-	var take_btn := Button.new()
-	take_btn.text = "Equip"
-	take_btn.add_theme_font_size_override("font_size", 14)
-	take_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	take_btn.pressed.connect(func():
-		_flip_other_reward_cards(container)
-		await get_tree().create_timer(0.35).timeout
-		_on_equipment_chosen(ed, coins_earned, overlay)
-	)
-	btn_row.add_child(take_btn)
-
-	var pass_btn := Button.new()
-	pass_btn.text = "Pass"
-	pass_btn.add_theme_font_size_override("font_size", 14)
-	pass_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	pass_btn.pressed.connect(func():
-		container.modulate = Color(0.40, 0.40, 0.40)
-		take_btn.disabled = true
-		pass_btn.disabled = true
-		_flip_other_reward_cards(container)
-	)
-	btn_row.add_child(pass_btn)
-
-	return panel
-
-
-## Returns a short list of stat strings for an equipment piece.
-func _equipment_stat_lines(ed: EquipmentData) -> Array[String]:
-	var lines: Array[String] = []
-	if ed.damage_bonus    > 0: lines.append("+%d Attack Dmg"   % ed.damage_bonus)
-	if ed.block_per_turn  > 0: lines.append("+%d Block / Round" % ed.block_per_turn)
-	if ed.max_hp_bonus    > 0: lines.append("+%d Max HP"        % ed.max_hp_bonus)
-	if ed.max_energy_bonus > 0: lines.append("+%d Max Energy"   % ed.max_energy_bonus)
-	if ed.crit_chance     > 0: lines.append("+%d%% Crit Chance" % ed.crit_chance)
-	return lines
 
 
 # ── TEMP debug input (1/2 damage enemy/player, 3/4 player energy; arrows queue a move)

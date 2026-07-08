@@ -2,7 +2,7 @@
   {
 	"id": "slash",
 	"card_name": "Slash",
-	"description": "Attack the cell in front. Deal 6.",
+	"description": "Attack the cell in front. Deal {dmg}.",
 	"cost": 3,
 	"type": 0,
 	"damage": 6,
@@ -14,7 +14,7 @@
   {
 	"id": "heavy_slash",
 	"card_name": "Heavy Slash",
-	"description": "Attack the cell in front. Deal 10.",
+	"description": "Attack the cell in front. Deal {dmg}.",
 	"cost": 5,
 	"type": 0,
 	"damage": 10,
@@ -26,7 +26,7 @@
   {
 	"id": "ranged_shot",
 	"card_name": "Ranged Shot",
-	"description": "Fire an arrow. Hits 1–2 cells ahead. Deal 4.",
+	"description": "Fire an arrow. Hits 1–2 cells ahead. Deal {dmg}.",
 	"cost": 2,
 	"type": 0,
 	"damage": 4,
@@ -37,7 +37,7 @@
   {
 	"id": "back_shot",
 	"card_name": "Back Shot",
-	"description": "Fire an arrow at 1–2 cells ahead, then step back. Deal 4.",
+	"description": "Fire an arrow at 1–2 cells ahead, then step back. Deal {dmg}.",
 	"cost": 2,
 	"type": 0,
 	"damage": 4,
@@ -61,7 +61,7 @@
   {
 	"id": "nuke",
 	"card_name": "Nuke",
-	"description": "Obliterate every cell on the battlefield. Deal 300.",
+	"description": "Obliterate every cell on the battlefield. Deal {dmg}.",
 	"cost": 1,
 	"type": 0,
 	"damage": 300,

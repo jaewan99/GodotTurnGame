@@ -28,7 +28,7 @@ var data: CardData:
 
 @onready var _name_label: Label        = $NameIcon/NameLabel
 @onready var _cost_label: Label        = $EnergyIcon/CostLabel
-@onready var _description_label: Label = $DescIcon/DescriptionLabel
+@onready var _description_label: RichTextLabel = $DescIcon/DescriptionLabel
 @onready var _art: TextureRect         = $Art
 @onready var _shine: ColorRect         = $Shine
 
@@ -101,13 +101,44 @@ func _refresh() -> void:
 	if data == null:
 		return
 	if _name_label:
-		_name_label.text = data.card_name
+		_name_label.text = data.display_name()
 	if _cost_label:
 		_cost_label.text = str(data.cost)
 	if _description_label:
-		_description_label.text = data.description
+		_description_label.text = "[center]%s[/center]" % _build_description()
 	if _art:
 		_art.texture = data.art if data.art else DEFAULT_PORTRAIT
+
+
+# ── Dynamic description ──────────────────────────────────────────────────────
+# Attack cards use a "{dmg}" placeholder that expands to a live, colour-coded
+# breakdown: total (plain) then base+upgrade (green) and equipment bonus (pink).
+const DMG_BASE_COLOR := "2e9e4f"   # card's own damage (base + forge upgrades)
+const DMG_ITEM_COLOR := "d6336c"   # bonus from equipped items
+
+func _build_description() -> String:
+	var text := data.description
+	if text.find("{dmg}") != -1:
+		text = text.replace("{dmg}", _damage_bbcode())
+	return text
+
+
+func _damage_bbcode() -> String:
+	# data.damage already bakes in forge upgrades; item bonus is added on top.
+	var base := data.damage
+	var item := _item_damage_bonus()
+	return "%d ([color=#%s]%d[/color] + [color=#%s]%d[/color])" \
+		% [base + item, DMG_BASE_COLOR, base, DMG_ITEM_COLOR, item]
+
+
+## Aggregate damage_bonus across every equipped slot (matches battlefield._apply_equipment).
+func _item_damage_bonus() -> int:
+	var total := 0
+	for equip in GameState.equipment.values():
+		var ed := equip as EquipmentData
+		if ed != null:
+			total += ed.damage_bonus
+	return total
 
 
 # ── Range highlight — shown on the battlefield board, not on the card ──────

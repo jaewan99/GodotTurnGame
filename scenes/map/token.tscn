@@ -8,6 +8,9 @@ script = ExtResource("1_token")
 [node name="Sprite" type="Sprite2D" parent="."]
 visible = false
 
+[node name="Anim" type="AnimatedSprite2D" parent="."]
+visible = false
+
 [node name="NameLabel" type="Label" parent="."]
 offset_left = -40.0
 offset_top = 18.0
