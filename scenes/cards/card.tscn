@@ -1,14 +1,63 @@
-[gd_scene format=3 uid="uid://58ed0rwpaprf"]
+[gd_scene load_steps=9 format=3 uid="uid://58ed0rwpaprf"]
 
 [ext_resource type="Script" uid="uid://bjdmj34ymq2vl" path="res://scripts/cards/card.gd" id="1_card"]
-[ext_resource type="Texture2D" uid="uid://dgch5ewfcspeg" path="res://assets/cards/japan_warrior/portrait/slash1.png" id="4_slash1"]
-[ext_resource type="Texture2D" uid="uid://dbtms6e6e2lqq" path="res://assets/cards/general/energyicon.png" id="2_mana"]
+[ext_resource type="Shader" path="res://shaders/card_frame.gdshader" id="2_frame"]
+[ext_resource type="Texture2D" uid="uid://dgch5ewfcspeg" path="res://assets/cards/japan_warrior/portrait/slash1.png" id="3_slash1"]
+[ext_resource type="Texture2D" uid="uid://dbtms6e6e2lqq" path="res://assets/cards/general/energyicon.png" id="4_mana"]
 
-[node name="Card" type="Button" unique_id=759706188]
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_frame"]
+resource_local_to_scene = true
+shader = ExtResource("2_frame")
+shader_parameter/card_size = Vector2(200, 300)
+shader_parameter/corner_radius = 16.0
+shader_parameter/border_width = 3.0
+shader_parameter/top_color = Color(0.13, 0.15, 0.23, 1)
+shader_parameter/bottom_color = Color(0.03, 0.04, 0.07, 1)
+shader_parameter/border_color = Color(0.82, 0.66, 0.32, 1)
+shader_parameter/grain = 0.05
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_name"]
+bg_color = Color(0.1, 0.09, 0.07, 0.85)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.82, 0.66, 0.32, 1)
+corner_radius_top_left = 6
+corner_radius_top_right = 6
+corner_radius_bottom_left = 6
+corner_radius_bottom_right = 6
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_art"]
+bg_color = Color(0.02, 0.02, 0.03, 1)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.65, 0.52, 0.26, 1)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_left = 4
+corner_radius_bottom_right = 4
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_desc"]
+bg_color = Color(0.93, 0.9, 0.82, 0.96)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.55, 0.42, 0.2, 1)
+corner_radius_top_left = 6
+corner_radius_top_right = 6
+corner_radius_bottom_left = 6
+corner_radius_bottom_right = 6
+
+[node name="Card" type="Button"]
 custom_minimum_size = Vector2(200, 300)
 script = ExtResource("1_card")
 
-[node name="Padding" type="ColorRect" parent="." unique_id=153524525]
+[node name="Base" type="ColorRect" parent="."]
+material = SubResource("ShaderMaterial_frame")
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
@@ -16,69 +65,63 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
-color = Color(0.72, 0.11, 0.12, 1)
+color = Color(1, 1, 1, 1)
 
-[node name="Content" type="ColorRect" parent="." unique_id=987654321]
+[node name="ArtFrame" type="Panel" parent="."]
 layout_mode = 1
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-offset_left = 10.0
-offset_top = 10.0
-offset_right = -10.0
-offset_bottom = -10.0
+anchors_preset = -1
+anchor_left = 0.085
+anchor_top = 0.162
+anchor_right = 0.915
+anchor_bottom = 0.538
 grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
-color = Color(0.96, 0.92, 0.84, 1)
+theme_override_styles/panel = SubResource("StyleBoxFlat_art")
 
-[node name="Art" type="TextureRect" parent="." unique_id=2051695264]
+[node name="Art" type="TextureRect" parent="."]
 texture_filter = 4
 layout_mode = 1
 anchors_preset = -1
 anchor_left = 0.1
-anchor_top = 0.16
+anchor_top = 0.172
 anchor_right = 0.9
-anchor_bottom = 0.5
+anchor_bottom = 0.528
 grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
-texture = ExtResource("4_slash1")
+texture = ExtResource("3_slash1")
 expand_mode = 1
-stretch_mode = 6
+stretch_mode = 5
 
-[node name="NameIcon" type="ColorRect" parent="." unique_id=112233445]
+[node name="NameIcon" type="Panel" parent="."]
 layout_mode = 1
 anchors_preset = -1
-anchor_left = 0.1
-anchor_top = 0.04
-anchor_right = 0.9
-anchor_bottom = 0.14
+anchor_left = 0.08
+anchor_top = 0.045
+anchor_right = 0.92
+anchor_bottom = 0.145
 grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
-color = Color(0.72, 0.11, 0.12, 1)
+theme_override_styles/panel = SubResource("StyleBoxFlat_name")
 
-[node name="NameLabel" type="Label" parent="NameIcon" unique_id=1832441009]
+[node name="NameLabel" type="Label" parent="NameIcon"]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
-theme_override_colors/font_color = Color(1, 1, 1, 1)
+theme_override_colors/font_color = Color(1, 0.9, 0.55, 1)
 theme_override_font_sizes/font_size = 20
 text = "Card Name"
 horizontal_alignment = 1
 vertical_alignment = 1
 
-[node name="EnergyIcon" type="TextureRect" parent="." unique_id=1933733373]
+[node name="EnergyIcon" type="TextureRect" parent="."]
 layout_mode = 1
 anchors_preset = -1
-anchor_left = 0.0
-anchor_top = 0.0
-anchor_right = 0.0
-anchor_bottom = 0.0
 offset_left = -14.25
 offset_top = -14.25
 offset_right = 42.75
@@ -86,11 +129,11 @@ offset_bottom = 42.75
 grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
-texture = ExtResource("2_mana")
+texture = ExtResource("4_mana")
 expand_mode = 1
 stretch_mode = 5
 
-[node name="CostLabel" type="Label" parent="EnergyIcon" unique_id=2034035937]
+[node name="CostLabel" type="Label" parent="EnergyIcon"]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
@@ -103,38 +146,41 @@ text = "99"
 horizontal_alignment = 1
 vertical_alignment = 1
 
-[node name="DescIcon" type="ColorRect" parent="." unique_id=556677889]
+[node name="DescIcon" type="Panel" parent="."]
 layout_mode = 1
 anchors_preset = -1
-anchor_left = 0.06
-anchor_top = 0.5
-anchor_right = 0.94
-anchor_bottom = 0.96
+anchor_left = 0.08
+anchor_top = 0.55
+anchor_right = 0.92
+anchor_bottom = 0.965
 grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
-color = Color(1, 1, 1, 0.9)
+theme_override_styles/panel = SubResource("StyleBoxFlat_desc")
 
-[node name="DescriptionLabel" type="RichTextLabel" parent="DescIcon" unique_id=357607749]
+[node name="DescriptionLabel" type="RichTextLabel" parent="DescIcon"]
 layout_mode = 1
-anchors_preset = 15
+anchors_preset = -1
+anchor_left = 0.0
+anchor_top = 0.5
 anchor_right = 1.0
-anchor_bottom = 1.0
-offset_left = 6.0
-offset_top = 6.0
-offset_right = -6.0
-offset_bottom = -6.0
+anchor_bottom = 0.5
+offset_left = 7.0
+offset_top = 0.0
+offset_right = -7.0
+offset_bottom = 0.0
 grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
 bbcode_enabled = true
+fit_content = true
 scroll_active = false
 autowrap_mode = 3
 theme_override_colors/default_color = Color(0.12, 0.12, 0.12, 1)
-theme_override_font_sizes/normal_font_size = 20
+theme_override_font_sizes/normal_font_size = 15
 text = "Deal [color=#2e9e4f]11[/color]"
 
-[node name="Shine" type="ColorRect" parent="." unique_id=425695054]
+[node name="Shine" type="ColorRect" parent="."]
 visible = false
 layout_mode = 1
 anchors_preset = 15

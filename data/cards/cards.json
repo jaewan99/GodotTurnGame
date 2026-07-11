@@ -1,10 +1,59 @@
 [
+  { "_comment": "════════ COMMON (rarity 0) — Movement & Basics ════════" },
+  {
+	"id": "do_nothing",
+	"card_name": "Wait",
+	"description": "Do nothing this slot.",
+	"cost": 0,
+	"type": 3,
+	"rarity": 0,
+	"move_direction": [0, 0]
+  },
+  {
+	"id": "move_up",
+	"card_name": "Up",
+	"description": "Move your token up one cell.",
+	"cost": 0,
+	"type": 3,
+	"rarity": 0,
+	"move_direction": [0, -1]
+  },
+  {
+	"id": "move_down",
+	"card_name": "Down",
+	"description": "Move your token down one cell.",
+	"cost": 0,
+	"type": 3,
+	"rarity": 0,
+	"move_direction": [0, 1]
+  },
+  {
+	"id": "move_left",
+	"card_name": "Left",
+	"description": "Move your token left one cell.",
+	"cost": 0,
+	"type": 3,
+	"rarity": 0,
+	"move_direction": [-1, 0]
+  },
+  {
+	"id": "move_right",
+	"card_name": "Right",
+	"description": "Move your token right one cell.",
+	"cost": 0,
+	"type": 3,
+	"rarity": 0,
+	"move_direction": [1, 0]
+  },
+
+  { "_comment": "════════ WARRIOR (rarity 1) — Starter set ════════" },
   {
 	"id": "slash",
 	"card_name": "Slash",
 	"description": "Attack the cell in front. Deal {dmg}.",
 	"cost": 3,
 	"type": 0,
+	"rarity": 1,
 	"damage": 6,
 	"affected_cells": [[1, 0]],
 	"art": "res://assets/cards/japan_warrior/portrait/slash1.png",
@@ -17,6 +66,7 @@
 	"description": "Attack the cell in front. Deal {dmg}.",
 	"cost": 5,
 	"type": 0,
+	"rarity": 1,
 	"damage": 10,
 	"affected_cells": [[1, 0]],
 	"art": "res://assets/cards/japan_warrior/portrait/heavy_slash.png",
@@ -24,27 +74,40 @@
 	"starter": 2
   },
   {
-	"id": "ranged_shot",
-	"card_name": "Ranged Shot",
-	"description": "Fire an arrow. Hits 1–2 cells ahead. Deal {dmg}.",
-	"cost": 2,
+	"id": "cleave",
+	"card_name": "Cleave",
+	"description": "Sweep the three cells ahead. Deal {dmg}.",
+	"cost": 4,
 	"type": 0,
-	"damage": 4,
-	"affected_cells": [[1, 0], [2, 0]],
-	"art": "res://assets/cards/japan_warrior/portrait/slash1.png",
-	"reward": false
+	"rarity": 1,
+	"damage": 5,
+	"affected_cells": [[1, -1], [1, 0], [1, 1]],
+	"art": "res://assets/cards/japan_warrior/portrait/heavy_slash.png",
+	"reward": true
   },
   {
-	"id": "back_shot",
-	"card_name": "Back Shot",
-	"description": "Fire an arrow at 1–2 cells ahead, then step back. Deal {dmg}.",
+	"id": "thrust",
+	"card_name": "Thrust",
+	"description": "Lunge forward, hitting 1–2 cells ahead. Deal {dmg}.",
 	"cost": 2,
 	"type": 0,
-	"damage": 4,
+	"rarity": 1,
+	"damage": 5,
 	"affected_cells": [[1, 0], [2, 0]],
-	"step": [-1, 0],
 	"art": "res://assets/cards/japan_warrior/portrait/slash1.png",
-	"reward": false
+	"reward": true
+  },
+  {
+	"id": "whirlwind",
+	"card_name": "Whirlwind",
+	"description": "Spin, striking every adjacent cell. Deal {dmg}.",
+	"cost": 4,
+	"type": 0,
+	"rarity": 1,
+	"damage": 4,
+	"affected_cells": [[1, 0], [-1, 0], [0, -1], [0, 1]],
+	"art": "res://assets/cards/japan_warrior/portrait/slash1.png",
+	"reward": true
   },
   {
 	"id": "focus",
@@ -52,6 +115,7 @@
 	"description": "Gain 4 energy.",
 	"cost": 0,
 	"type": 1,
+	"rarity": 1,
 	"energy_gain": 4,
 	"affected_cells": [[0, 0]],
 	"art": "res://assets/cards/japan_warrior/portrait/focus.png",
@@ -64,6 +128,7 @@
 	"description": "Obliterate every cell on the battlefield. Deal {dmg}.",
 	"cost": 1,
 	"type": 0,
+	"rarity": 1,
 	"damage": 300,
 	"affected_cells": [
 	  [-4,-2],[-3,-2],[-2,-2],[-1,-2],[0,-2],[1,-2],[2,-2],[3,-2],[4,-2],
@@ -76,44 +141,31 @@
 	"reward": true,
 	"starter": 1
   },
+
+  { "_comment": "════════ ENEMY (rarity 11) — Foe-only cards ════════" },
   {
-	"id": "do_nothing",
-	"card_name": "Wait",
-	"description": "Do nothing this slot.",
-	"cost": 0,
-	"type": 3,
-	"move_direction": [0, 0]
+	"id": "ranged_shot",
+	"card_name": "Ranged Shot",
+	"description": "Fire an arrow. Hits 1–2 cells ahead. Deal {dmg}.",
+	"cost": 2,
+	"type": 0,
+	"rarity": 11,
+	"damage": 4,
+	"affected_cells": [[1, 0], [2, 0]],
+	"art": "res://assets/cards/japan_warrior/portrait/slash1.png",
+	"reward": false
   },
   {
-	"id": "move_up",
-	"card_name": "Up",
-	"description": "Move your token up one cell.",
-	"cost": 1,
-	"type": 3,
-	"move_direction": [0, -1]
-  },
-  {
-	"id": "move_down",
-	"card_name": "Down",
-	"description": "Move your token down one cell.",
-	"cost": 1,
-	"type": 3,
-	"move_direction": [0, 1]
-  },
-  {
-	"id": "move_left",
-	"card_name": "Left",
-	"description": "Move your token left one cell.",
-	"cost": 1,
-	"type": 3,
-	"move_direction": [-1, 0]
-  },
-  {
-	"id": "move_right",
-	"card_name": "Right",
-	"description": "Move your token right one cell.",
-	"cost": 1,
-	"type": 3,
-	"move_direction": [1, 0]
+	"id": "back_shot",
+	"card_name": "Back Shot",
+	"description": "Fire an arrow at 1–2 cells ahead, then step back. Deal {dmg}.",
+	"cost": 2,
+	"type": 0,
+	"rarity": 11,
+	"damage": 4,
+	"affected_cells": [[1, 0], [2, 0]],
+	"step": [-1, 0],
+	"art": "res://assets/cards/japan_warrior/portrait/slash1.png",
+	"reward": false
   }
 ]

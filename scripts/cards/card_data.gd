@@ -28,6 +28,9 @@ enum CardType {
 @export_group("Cost & Type")
 @export var cost: int = 1                      ## energy needed to play it
 @export var type: CardType = CardType.ATTACK
+## Card set / rarity — drives the frame colour. 0 = COMMON (grey),
+## 1 = WARRIOR (dark). More sets can be added later.
+@export var rarity: int = 0
 
 ## Tracks how many times this specific instance has been forged at the Event node.
 ## Not exported — .tres template files always start at 0; only live deck copies carry a level.
@@ -107,6 +110,9 @@ static func _load_json() -> Array:
 		return []
 	var result: Array = []
 	for d in data:
+		# Entries without an "id" are section dividers ("_comment"), not cards.
+		if not d.has("id"):
+			continue
 		result.append(_from_dict(d))
 	return result
 
@@ -117,6 +123,7 @@ static func _from_dict(d: Dictionary) -> CardData:
 	cd.description   = d.get("description", "")
 	cd.cost          = d.get("cost", 0)
 	cd.type          = d.get("type", 0)
+	cd.rarity        = d.get("rarity", 0)
 	cd.damage        = d.get("damage", 0)
 	cd.block         = d.get("block", 0)
 	cd.energy_gain   = d.get("energy_gain", 0)

@@ -26,6 +26,7 @@ var data: CardData:
 		if is_node_ready():
 			_refresh()
 
+@onready var _base: ColorRect          = $Base
 @onready var _name_label: Label        = $NameIcon/NameLabel
 @onready var _cost_label: Label        = $EnergyIcon/CostLabel
 @onready var _description_label: RichTextLabel = $DescIcon/DescriptionLabel
@@ -108,6 +109,41 @@ func _refresh() -> void:
 		_description_label.text = "[center]%s[/center]" % _build_description()
 	if _art:
 		_art.texture = data.art if data.art else DEFAULT_PORTRAIT
+	_apply_frame()
+
+
+# ── Frame colour by card rarity/set ──────────────────────────────────────────
+# Each entry tints the card_frame shader: gradient top/bottom + border.
+# 0 = COMMON (grey), 1 = WARRIOR (dark navy + gold, the default look).
+const FRAME_COLORS := {
+	0: {  # COMMON — grey
+		"top":    Color(0.30, 0.31, 0.34),
+		"bottom": Color(0.12, 0.12, 0.14),
+		"border": Color(0.62, 0.63, 0.67),
+	},
+	1: {  # WARRIOR — dark navy with gold trim
+		"top":    Color(0.13, 0.15, 0.23),
+		"bottom": Color(0.03, 0.04, 0.07),
+		"border": Color(0.82, 0.66, 0.32),
+	},
+	11: {  # ENEMY — blood crimson
+		"top":    Color(0.24, 0.05, 0.06),
+		"bottom": Color(0.06, 0.02, 0.02),
+		"border": Color(0.78, 0.20, 0.18),
+	},
+}
+
+
+func _apply_frame() -> void:
+	if _base == null or data == null:
+		return
+	var mat := _base.material as ShaderMaterial
+	if mat == null:
+		return
+	var cfg: Dictionary = FRAME_COLORS.get(data.rarity, FRAME_COLORS[1])
+	mat.set_shader_parameter("top_color",    cfg["top"])
+	mat.set_shader_parameter("bottom_color", cfg["bottom"])
+	mat.set_shader_parameter("border_color", cfg["border"])
 
 
 # ── Dynamic description ──────────────────────────────────────────────────────
