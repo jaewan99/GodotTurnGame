@@ -6,16 +6,15 @@ content_margin_top = 8.0
 content_margin_right = 12.0
 content_margin_bottom = 8.0
 bg_color = Color(0.01, 0.01, 0.02, 0.95)
-border_width_left = 1
-border_width_top = 1
-border_width_right = 1
-border_width_bottom = 1
-border_color = Color(0.72, 0.58, 0.28, 0.4)
 corner_radius_top_left = 6
 corner_radius_top_right = 6
 corner_radius_bottom_right = 6
 corner_radius_bottom_left = 6
+corner_detail = 12
+anti_aliasing = true
+anti_aliasing_size = 1.5
 
 [resource]
 TooltipLabel/colors/font_color = Color(0.93, 0.93, 0.95, 1)
+TooltipLabel/font_sizes/font_size = 18
 TooltipPanel/styles/panel = SubResource("tooltip_panel")

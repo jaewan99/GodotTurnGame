@@ -56,7 +56,7 @@ func _ready() -> void:
 	layer = 10
 
 	var bg := ColorRect.new()
-	bg.color = Color(0.0, 0.0, 0.0, 0.88)
+	bg.color = Color(0.0, 0.0, 0.0, 0.84)   # match the Stats backdrop
 	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
 	add_child(bg)
 
@@ -65,6 +65,14 @@ func _ready() -> void:
 	add_child(_root)
 
 	_rebuild()
+
+
+## Dark, neutral (non-blue) panel matching the Stats overlay's darkness.
+static func _dark_panel_style() -> StyleBoxFlat:
+	var s := StyleBoxFlat.new()
+	s.bg_color = Color(0.05, 0.05, 0.05, 0.96)
+	s.set_corner_radius_all(14)
+	return s
 
 
 func _rebuild() -> void:
@@ -77,6 +85,7 @@ func _rebuild() -> void:
 	panel.offset_right  =  520.0
 	panel.offset_top    = -370.0
 	panel.offset_bottom =  370.0
+	panel.add_theme_stylebox_override("panel", _dark_panel_style())
 	_root.add_child(panel)
 
 	var outer := VBoxContainer.new()

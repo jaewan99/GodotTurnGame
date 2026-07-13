@@ -53,6 +53,13 @@ var _current_node: MapNode = null      # node whose overlay is currently open
 ## Items selected for merging in the inventory overlay.
 var _merge_sel: Array = []
 
+# ── Scroll screen state ───────────────────────────────────────────────────────
+var _scroll_slot: EquipmentData = null      # item currently placed in the centre slot
+var _scroll_slot_equipped: bool = false     # was it equipped (vs from inventory)?
+var _scroll_slot_node: Control = null       # the centre slot Panel, for effect anims
+var _scroll_last_msg: String = ""           # result line shown after the last scroll
+var _scroll_last_color: Color = Color.WHITE
+
 ## How fast the map follows the mouse while panning.
 ## 1.0 = map moves 1:1 with the cursor; 0.5 = half speed; >1.0 = faster.
 const PAN_SPEED := 1.0
@@ -657,11 +664,20 @@ func _card_picker_flow(parent: Control) -> HFlowContainer:
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	parent.add_child(scroll)
 
+	# Pad inside the scroll so the first card row isn't clipped against the top edge.
+	var margin := MarginContainer.new()
+	margin.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	margin.add_theme_constant_override("margin_top", 14)
+	margin.add_theme_constant_override("margin_left", 8)
+	margin.add_theme_constant_override("margin_right", 8)
+	margin.add_theme_constant_override("margin_bottom", 8)
+	scroll.add_child(margin)
+
 	var flow := HFlowContainer.new()
 	flow.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	flow.add_theme_constant_override("h_separation", 12)
 	flow.add_theme_constant_override("v_separation", 12)
-	scroll.add_child(flow)
+	margin.add_child(flow)
 	return flow
 
 
@@ -1023,47 +1039,6 @@ func _apply_scroll(sd: ScrollData, ed: EquipmentData, is_equipped: bool) -> Arra
 			else:
 				GameState.inventory.erase(ed)
 		return [false, destroyed]
-
-
-func _build_scroll_result(sd: ScrollData, item_name: String, success: bool, destroyed: bool,
-		root: Control, overlay: CanvasLayer) -> void:
-	_clear_children(root)
-
-	var vbox := EventTemplates.result_flash(root, 200.0)
-
-	var result_lbl := Label.new()
-	result_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	result_lbl.add_theme_font_size_override("font_size", 40)
-	if success:
-		result_lbl.text = "Scroll worked!"
-		result_lbl.modulate = Color(0.25, 1.0, 0.45)
-	elif destroyed:
-		result_lbl.text = "The item shattered!"
-		result_lbl.modulate = Color(1.0, 0.25, 0.20)
-	else:
-		result_lbl.text = "Scroll fizzled…"
-		result_lbl.modulate = Color(0.88, 0.55, 0.20)
-	vbox.add_child(result_lbl)
-
-	var detail_lbl := Label.new()
-	detail_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	detail_lbl.add_theme_font_size_override("font_size", 18)
-	if success:
-		detail_lbl.text = "%s received +%d %s." % [
-			item_name, sd.boost_amount, sd.stat_label()
-		]
-	elif destroyed:
-		detail_lbl.text = "%s was destroyed." % item_name
-	else:
-		detail_lbl.text = "%s is unchanged." % item_name
-	vbox.add_child(detail_lbl)
-
-	var ok_btn := Button.new()
-	ok_btn.text = "Continue"
-	ok_btn.add_theme_font_size_override("font_size", 18)
-	ok_btn.custom_minimum_size = Vector2(140, 0)
-	ok_btn.pressed.connect(func(): _build_forge_menu(root, overlay))
-	vbox.add_child(ok_btn)
 
 
 # ── Scavenge: scroll drop ─────────────────────────────────────────────────────
@@ -1452,8 +1427,14 @@ func _build_forge_menu(root: Control, overlay: CanvasLayer) -> void:
 	row.add_child(leave_card)
 
 
-func _build_scroll_select(root: Control, overlay: CanvasLayer) -> void:
+func _build_scroll_select(root: Control, overlay: CanvasLayer, fresh: bool = true) -> void:
 	_clear_children(root)
+	if fresh:
+		_scroll_slot = null
+		_scroll_last_msg = ""
+	# Drop a stale slotted item that was removed/destroyed elsewhere.
+	if _scroll_slot != null and not _slot_item_exists(_scroll_slot):
+		_scroll_slot = null
 
 	# Format D: workbench list.
 	var vbox := EventTemplates.merchant_split(root, "forge", "res://assets/map/nodes/forge.png")
@@ -1466,19 +1447,51 @@ func _build_scroll_select(root: Control, overlay: CanvasLayer) -> void:
 	vbox.add_child(title)
 
 	var hint := Label.new()
-	hint.text = "Drag a scroll onto an item to apply it."
+	hint.text = "Drag a scroll onto the item in the slot." if _scroll_slot != null \
+		else "Click or drag an item into the slot, then apply a scroll."
 	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	hint.add_theme_font_size_override("font_size", 16)
 	hint.modulate = Color(0.65, 0.65, 0.65)
 	vbox.add_child(hint)
 
-	# ── Scrolls (drag sources) ────────────────────────────────────────────────
-	vbox.add_child(_inv_section_label("SCROLLS"))
+	# Outcome of the previous scroll, shown until the next action.
+	if _scroll_last_msg != "":
+		var msg := Label.new()
+		msg.text = _scroll_last_msg
+		msg.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		msg.add_theme_font_size_override("font_size", 17)
+		msg.modulate = _scroll_last_color
+		vbox.add_child(msg)
+
+	# Two columns: the item slot on the left, scrolls + item lists on the right.
+	var cols := HBoxContainer.new()
+	cols.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	cols.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	cols.add_theme_constant_override("separation", 24)
+	vbox.add_child(cols)
+
+	# ── Left box: the centre slot, vertically centred ────────────────────────
+	var left_box := _boxed_panel()
+	left_box.size_flags_stretch_ratio = 0.85
+	cols.add_child(left_box)
+	var left := CenterContainer.new()
+	left_box.add_child(left)
+	left.add_child(_build_scroll_slot(root, overlay))
+
+	# ── Right box: scrolls (drag sources) + placeable items ──────────────────
+	var right_box := _boxed_panel()
+	right_box.size_flags_stretch_ratio = 1.3
+	cols.add_child(right_box)
+	var right := VBoxContainer.new()
+	right.add_theme_constant_override("separation", 8)
+	right_box.add_child(right)
+
+	right.add_child(_inv_section_label("SCROLLS"))
 	var s_grid := GridContainer.new()
 	s_grid.columns = 8
 	s_grid.add_theme_constant_override("h_separation", 8)
 	s_grid.add_theme_constant_override("v_separation", 8)
-	vbox.add_child(s_grid)
+	right.add_child(s_grid)
 
 	for item in GameState.scrolls:
 		var sd: ScrollData = item as ScrollData
@@ -1492,12 +1505,12 @@ func _build_scroll_select(root: Control, overlay: CanvasLayer) -> void:
 		)
 		s_grid.add_child(tile)
 
-	vbox.add_child(HSeparator.new())
+	right.add_child(HSeparator.new())
 
-	# ── Targets: equipped + inventory items (drop a scroll on them) ──────────
+	# ── Items you can place in the slot (click or drag) ───────────────────────
 	var scr := ScrollContainer.new()
 	scr.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	vbox.add_child(scr)
+	right.add_child(scr)
 
 	var cv := VBoxContainer.new()
 	cv.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -1512,9 +1525,9 @@ func _build_scroll_select(root: Control, overlay: CanvasLayer) -> void:
 	cv.add_child(eq_grid)
 	for slot_int in [0, 1, 2, 3, 4]:
 		var ed := GameState.equipment.get(slot_int) as EquipmentData
-		if ed == null or ed.enchant_level >= ed.max_enchant:
+		if ed == null or ed.enchant_level >= ed.max_enchant or ed == _scroll_slot:
 			continue
-		eq_grid.add_child(_make_scroll_target_tile(ed, true, root, overlay))
+		eq_grid.add_child(_make_item_source_tile(ed, true, root, overlay))
 
 	cv.add_child(_inv_section_label("ITEMS"))
 	var inv_grid := GridContainer.new()
@@ -1525,9 +1538,9 @@ func _build_scroll_select(root: Control, overlay: CanvasLayer) -> void:
 	for item in GameState.inventory:
 		var ed := item as EquipmentData
 		if ed == null or not EquipmentData.is_equippable(ed) \
-				or ed.enchant_level >= ed.max_enchant:
+				or ed.enchant_level >= ed.max_enchant or ed == _scroll_slot:
 			continue
-		inv_grid.add_child(_make_scroll_target_tile(ed, false, root, overlay))
+		inv_grid.add_child(_make_item_source_tile(ed, false, root, overlay))
 
 	var back_btn := Button.new()
 	back_btn.text = "Back"
@@ -1536,16 +1549,180 @@ func _build_scroll_select(root: Control, overlay: CanvasLayer) -> void:
 	vbox.add_child(back_btn)
 
 
-## Equipment tile that accepts a dragged scroll and applies it on drop.
-func _make_scroll_target_tile(ed: EquipmentData, is_equipped: bool,
+## A framed container box (background + border + inner padding), used to make
+## the scroll screen's two columns read as separate panels.
+func _boxed_panel() -> PanelContainer:
+	var p := PanelContainer.new()
+	p.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	p.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color(0.07, 0.07, 0.10, 0.85)
+	sb.set_border_width_all(2)
+	sb.border_color = Color(0.30, 0.30, 0.36)
+	sb.set_corner_radius_all(10)
+	sb.set_content_margin_all(14)
+	p.add_theme_stylebox_override("panel", sb)
+	return p
+
+
+## True while the slotted item is still owned by the player.
+func _slot_item_exists(ed: EquipmentData) -> bool:
+	return GameState.equipment.values().has(ed) or GameState.inventory.has(ed)
+
+
+## The centre slot: empty (accepts an item) or filled (accepts a scroll).
+func _build_scroll_slot(root: Control, overlay: CanvasLayer) -> Control:
+	var col := VBoxContainer.new()
+	col.alignment = BoxContainer.ALIGNMENT_CENTER
+	col.add_theme_constant_override("separation", 6)
+
+	var panel := Panel.new()
+	panel.custom_minimum_size = Vector2(150, 150)
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color(0.09, 0.09, 0.12)
+	sb.set_border_width_all(3)
+	sb.border_color = Color(0.55, 0.42, 0.75) if _scroll_slot != null else Color(0.32, 0.32, 0.38)
+	sb.set_corner_radius_all(12)
+	panel.add_theme_stylebox_override("panel", sb)
+	_scroll_slot_node = panel
+	col.add_child(panel)
+
+	if _scroll_slot == null:
+		var lbl := Label.new()
+		lbl.text = "＋\nPlace an item"
+		lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		lbl.add_theme_font_size_override("font_size", 16)
+		lbl.modulate = Color(0.5, 0.5, 0.56)
+		lbl.set_anchors_preset(Control.PRESET_FULL_RECT)
+		lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		panel.add_child(lbl)
+		panel.set_drag_forwarding(
+			_no_drag_data,
+			_can_drop_item_in_slot,
+			_drop_item_in_slot.bind(root, overlay)
+		)
+	else:
+		var icon := InventoryOverlay.make_tile(_scroll_slot, 132.0)
+		icon.mouse_filter = Control.MOUSE_FILTER_IGNORE   # let the panel catch drops
+		icon.position = Vector2(9, 9)
+		icon.size = Vector2(132, 132)
+		panel.add_child(icon)
+		panel.set_drag_forwarding(
+			_no_drag_data,
+			_can_drop_scroll_in_slot,
+			_drop_scroll_in_slot.bind(root, overlay)
+		)
+		# Click the slotted item to take it back out.
+		panel.tooltip_text = "Click to remove"
+		panel.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+		panel.gui_input.connect(func(ev: InputEvent):
+			if ev is InputEventMouseButton and ev.button_index == MOUSE_BUTTON_LEFT \
+					and not ev.pressed:
+				_scroll_slot = null
+				_build_scroll_select(root, overlay, false)
+		)
+
+		# Name on its own line (fits the slot width), enchant count on a second
+		# line — so a long name+count never gets clipped to "…".
+		var name_lbl := Label.new()
+		name_lbl.text = _scroll_slot.equipment_name
+		name_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		name_lbl.add_theme_font_size_override("font_size", 14)
+		name_lbl.modulate = Color(0.85, 0.85, 0.9)
+		name_lbl.custom_minimum_size = Vector2(150, 0)
+		name_lbl.clip_text = true
+		name_lbl.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+		col.add_child(name_lbl)
+
+		var lvl_lbl := Label.new()
+		lvl_lbl.text = "✦ %d / %d" % [_scroll_slot.enchant_level, _scroll_slot.max_enchant]
+		lvl_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		lvl_lbl.add_theme_font_size_override("font_size", 12)
+		lvl_lbl.modulate = Color(1.0, 0.85, 0.4)
+		col.add_child(lvl_lbl)
+
+		var tip := Label.new()
+		tip.text = "(click to remove)"
+		tip.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		tip.add_theme_font_size_override("font_size", 12)
+		tip.modulate = Color(0.5, 0.5, 0.55)
+		col.add_child(tip)
+
+	return col
+
+
+## An item tile in the lists — click OR drag it to fill the centre slot.
+func _make_item_source_tile(ed: EquipmentData, is_equipped: bool,
 		root: Control, overlay: CanvasLayer) -> Button:
 	var tile := InventoryOverlay.make_tile(ed, 86.0)
+	tile.pressed.connect(func(): _place_in_slot(ed, is_equipped, root, overlay))
 	tile.set_drag_forwarding(
-		_no_drag_data,
-		_can_drop_scroll,
-		_drop_scroll_on.bind(ed, is_equipped, root, overlay)
+		_item_drag_data.bind(ed, is_equipped, tile),
+		_reject_drop,
+		_ignore_drop
 	)
 	return tile
+
+
+func _place_in_slot(ed: EquipmentData, is_equipped: bool,
+		root: Control, overlay: CanvasLayer) -> void:
+	_scroll_slot = ed
+	_scroll_slot_equipped = is_equipped
+	_scroll_last_msg = ""
+	_build_scroll_select(root, overlay, false)
+
+
+## Apply a scroll to the slotted item, animate the outcome in the box, rebuild.
+func _resolve_scroll_on_slot(sd: ScrollData, root: Control, overlay: CanvasLayer) -> void:
+	var ed := _scroll_slot
+	if ed == null:
+		return
+	var result := _apply_scroll(sd, ed, _scroll_slot_equipped)
+	GameState.scrolls.erase(sd)
+	var success: bool = result[0]
+	var destroyed: bool = result[1]
+
+	if success:
+		_scroll_last_msg = "%s glows — +%d %s!" % [ed.equipment_name, sd.boost_amount, sd.stat_label()]
+		_scroll_last_color = Color(0.35, 1.0, 0.5)
+	elif destroyed:
+		_scroll_last_msg = "%s shattered!" % ed.equipment_name
+		_scroll_last_color = Color(1.0, 0.35, 0.3)
+	else:
+		_scroll_last_msg = "The scroll fizzled — %s is unchanged." % ed.equipment_name
+		_scroll_last_color = Color(0.95, 0.65, 0.3)
+
+	await _play_slot_effect(_scroll_slot_node, success, destroyed)
+
+	if destroyed:
+		_scroll_slot = null
+	_build_scroll_select(root, overlay, false)
+
+
+## Simple in-box feedback: green glow (success), orange wobble (fizzle),
+## red flash + shatter-out (destroyed).
+func _play_slot_effect(node: Control, success: bool, destroyed: bool) -> void:
+	if not is_instance_valid(node):
+		return
+	node.pivot_offset = node.size / 2.0
+	var tw := create_tween().set_ease(Tween.EASE_OUT)
+	if success:
+		tw.tween_property(node, "modulate", Color(0.5, 1.8, 0.7), 0.12)
+		tw.parallel().tween_property(node, "scale", Vector2(1.12, 1.12), 0.12)
+		tw.tween_property(node, "modulate", Color.WHITE, 0.40)
+		tw.parallel().tween_property(node, "scale", Vector2.ONE, 0.40)
+	elif destroyed:
+		tw.tween_property(node, "modulate", Color(2.0, 0.4, 0.3), 0.10)
+		tw.tween_property(node, "modulate", Color(1.0, 1.0, 1.0, 0.0), 0.40)
+		tw.parallel().tween_property(node, "scale", Vector2(0.55, 0.55), 0.40)
+	else:
+		tw.tween_property(node, "modulate", Color(1.7, 1.1, 0.4), 0.10)
+		tw.tween_property(node, "rotation", deg_to_rad(7.0), 0.06)
+		tw.tween_property(node, "rotation", deg_to_rad(-7.0), 0.06)
+		tw.tween_property(node, "rotation", 0.0, 0.06)
+		tw.tween_property(node, "modulate", Color.WHITE, 0.20)
+	await tw.finished
 
 
 # ── Drag & drop forwarding callbacks ──────────────────────────────────────────
@@ -1564,6 +1741,20 @@ func _scroll_drag_data(_pos: Vector2, sd: ScrollData, tile: Control) -> Variant:
 	return {"scroll": sd}
 
 
+func _item_drag_data(_pos: Vector2, ed: EquipmentData, is_equipped: bool, tile: Control) -> Variant:
+	var prev := TextureRect.new()
+	var art := InventoryOverlay.equip_icon(ed)
+	prev.texture = art if art != null else load(InventoryOverlay.ICON_PATH)
+	prev.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	prev.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	prev.custom_minimum_size = Vector2(60, 60)
+	prev.size = Vector2(60, 60)
+	if art == null:
+		prev.modulate = EquipmentData.rarity_color(ed.rarity)
+	tile.set_drag_preview(prev)
+	return {"item": ed, "equipped": is_equipped}
+
+
 func _no_drag_data(_pos: Vector2) -> Variant:
 	return null
 
@@ -1576,16 +1767,21 @@ func _ignore_drop(_pos: Vector2, _data: Variant) -> void:
 	pass
 
 
-func _can_drop_scroll(_pos: Vector2, data: Variant) -> bool:
-	return data is Dictionary and data.has("scroll")
+func _can_drop_item_in_slot(_pos: Vector2, data: Variant) -> bool:
+	return data is Dictionary and data.has("item")
 
 
-func _drop_scroll_on(_pos: Vector2, data: Variant, ed: EquipmentData,
-		is_equipped: bool, root: Control, overlay: CanvasLayer) -> void:
-	var sd: ScrollData = data["scroll"]
-	var result := _apply_scroll(sd, ed, is_equipped)
-	GameState.scrolls.erase(sd)
-	_build_scroll_result(sd, ed.equipment_name, result[0], result[1], root, overlay)
+func _drop_item_in_slot(_pos: Vector2, data: Variant, root: Control, overlay: CanvasLayer) -> void:
+	_place_in_slot(data["item"], data["equipped"], root, overlay)
+
+
+func _can_drop_scroll_in_slot(_pos: Vector2, data: Variant) -> bool:
+	return data is Dictionary and data.has("scroll") \
+		and _scroll_slot != null and _scroll_slot.enchant_level < _scroll_slot.max_enchant
+
+
+func _drop_scroll_in_slot(_pos: Vector2, data: Variant, root: Control, overlay: CanvasLayer) -> void:
+	_resolve_scroll_on_slot(data["scroll"], root, overlay)
 
 
 func _build_merge_view(root: Control, overlay: CanvasLayer) -> void:
@@ -1604,62 +1800,71 @@ func _build_merge_view(root: Control, overlay: CanvasLayer) -> void:
 	vbox.add_child(title)
 
 	var hint := Label.new()
-	hint.text = "Left-click: select 3 items of the same rarity  •  Right-click: deselect  (80% success)"
+	hint.text = "Click 3 items of the same rarity into the slots, then Merge.  (80% success)"
 	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	hint.add_theme_font_size_override("font_size", 16)
 	hint.modulate = Color(0.65, 0.65, 0.65)
 	vbox.add_child(hint)
 
+	# Two columns: the three merge slots on the left, item list on the right.
+	var cols := HBoxContainer.new()
+	cols.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	cols.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	cols.add_theme_constant_override("separation", 24)
+	vbox.add_child(cols)
+
+	# ── Left box: three slots in a row, sized to the items (not stretched) ────
+	var left_box := _boxed_panel()
+	left_box.size_flags_horizontal = Control.SIZE_SHRINK_CENTER  # hug the slots
+	cols.add_child(left_box)
+	var left_center := CenterContainer.new()
+	left_box.add_child(left_center)
+	var slots := HBoxContainer.new()
+	slots.add_theme_constant_override("separation", 10)
+	left_center.add_child(slots)
+	for i in range(3):
+		slots.add_child(_merge_slot(i, root, overlay))
+
+	# ── Right box: inventory items (click to place in the next slot) ─────────
+	var right_box := _boxed_panel()
+	right_box.size_flags_stretch_ratio = 1.3
+	cols.add_child(right_box)
+	var right := VBoxContainer.new()
+	right.add_theme_constant_override("separation", 8)
+	right_box.add_child(right)
+
+	right.add_child(_inv_section_label("ITEMS"))
 	var scroll := ScrollContainer.new()
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	vbox.add_child(scroll)
+	right.add_child(scroll)
 
 	var grid := GridContainer.new()
-	grid.columns = 8
+	grid.columns = 6
 	grid.add_theme_constant_override("h_separation", 8)
 	grid.add_theme_constant_override("v_separation", 8)
 	scroll.add_child(grid)
 
-	if GameState.inventory.is_empty():
-		var empty_lbl := Label.new()
-		empty_lbl.text = "No items in inventory."
-		empty_lbl.modulate = Color(0.5, 0.5, 0.5)
-		empty_lbl.add_theme_font_size_override("font_size", 15)
-		grid.add_child(empty_lbl)
-
+	var any_item := false
 	for item in GameState.inventory:
 		var ed := item as EquipmentData
-		if ed == null or not EquipmentData.is_equippable(ed):
+		if ed == null or not EquipmentData.is_equippable(ed) or _merge_sel.has(ed):
 			continue
-		var selected := _merge_sel.has(ed)
-
+		any_item = true
 		var tile := InventoryOverlay.make_tile(ed, 86.0)
-		if selected:
-			tile.modulate = Color(1.30, 1.30, 0.90)
-			var check := Label.new()
-			check.text = "✓"
-			check.add_theme_font_size_override("font_size", 18)
-			check.modulate = Color(1.0, 0.9, 0.3)
-			check.set_anchors_preset(Control.PRESET_TOP_LEFT)
-			check.offset_left = 4.0; check.offset_right = 24.0
-			check.offset_top = 0.0;  check.offset_bottom = 22.0
-			check.mouse_filter = Control.MOUSE_FILTER_IGNORE
-			tile.add_child(check)
-
 		var cap_ed := ed
 		tile.pressed.connect(func():
 			if not _merge_sel.has(cap_ed) and _merge_sel.size() < 3:
 				_merge_sel.append(cap_ed)
 				_build_merge_view(root, overlay)
 		)
-		tile.gui_input.connect(func(ev: InputEvent):
-			if ev is InputEventMouseButton and ev.pressed \
-					and ev.button_index == MOUSE_BUTTON_RIGHT \
-					and _merge_sel.has(cap_ed):
-				_merge_sel.erase(cap_ed)
-				_build_merge_view(root, overlay)
-		)
 		grid.add_child(tile)
+
+	if not any_item:
+		var empty_lbl := Label.new()
+		empty_lbl.text = "No items available to merge."
+		empty_lbl.modulate = Color(0.5, 0.5, 0.5)
+		empty_lbl.add_theme_font_size_override("font_size", 15)
+		grid.add_child(empty_lbl)
 
 	# Merge button — always visible, activates when the selection is valid.
 	var merge_btn := Button.new()
@@ -1684,6 +1889,52 @@ func _build_merge_view(root: Control, overlay: CanvasLayer) -> void:
 	back_btn.add_theme_font_size_override("font_size", 17)
 	back_btn.pressed.connect(func(): _build_forge_menu(root, overlay))
 	vbox.add_child(back_btn)
+
+
+## One of the three merge slots. Empty (waiting) or holding a placed item;
+## clicking a filled slot removes that item from the selection.
+func _merge_slot(index: int, root: Control, overlay: CanvasLayer) -> Control:
+	var ed: EquipmentData = _merge_sel[index] if index < _merge_sel.size() else null
+
+	var panel := Panel.new()
+	panel.custom_minimum_size = Vector2(96, 96)   # roughly one item-tile in size
+	panel.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	panel.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color(0.09, 0.09, 0.12)
+	sb.set_border_width_all(3)
+	sb.border_color = EquipmentData.rarity_color(ed.rarity) if ed != null \
+		else Color(0.32, 0.32, 0.38)
+	sb.set_corner_radius_all(12)
+	panel.add_theme_stylebox_override("panel", sb)
+
+	if ed == null:
+		var lbl := Label.new()
+		lbl.text = "＋"
+		lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		lbl.add_theme_font_size_override("font_size", 26)
+		lbl.modulate = Color(0.4, 0.4, 0.46)
+		lbl.set_anchors_preset(Control.PRESET_FULL_RECT)
+		lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		panel.add_child(lbl)
+	else:
+		var icon := InventoryOverlay.make_tile(ed, 80.0)
+		icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		icon.position = Vector2(8, 8)
+		icon.size = Vector2(80, 80)
+		panel.add_child(icon)
+		panel.tooltip_text = "Click to remove"
+		panel.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+		var cap_ed := ed
+		panel.gui_input.connect(func(ev: InputEvent):
+			if ev is InputEventMouseButton and ev.button_index == MOUSE_BUTTON_LEFT \
+					and not ev.pressed:
+				_merge_sel.erase(cap_ed)
+				_build_merge_view(root, overlay)
+		)
+
+	return panel
 
 
 # ── Enchant overlay ───────────────────────────────────────────────────────────

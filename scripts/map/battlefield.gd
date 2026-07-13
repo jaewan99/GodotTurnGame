@@ -387,9 +387,10 @@ func _clear_from(index: int) -> void:
 			card.mouse_filter = Control.MOUSE_FILTER_STOP
 			card.card_size = CARD_SIZE
 			card.scale = Vector2.ONE
+			var from_global := card.global_position  # slot position, before detaching
 			if is_instance_valid(holder):
 				holder.remove_child(card)         # detach before the hand re-adopts it
-			_hand.return_card(card)               # puts the card back into the hand
+			_hand.return_card(card, from_global)  # fly back from the slot to the hand
 			if is_instance_valid(holder):
 				holder.queue_free()               # discard the now-empty wrapper
 		elif is_instance_valid(holder):

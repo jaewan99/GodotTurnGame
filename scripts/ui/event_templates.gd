@@ -190,8 +190,6 @@ static func merchant_split(root: Control, art_key: String,
 static func result_flash(root: Control, half_h: float = 240.0) -> VBoxContainer:
 	var style := StyleBoxFlat.new()
 	style.bg_color = Color(0.05, 0.05, 0.08, 0.95)
-	style.border_color = Color(0.72, 0.58, 0.28, 0.55)
-	style.set_border_width_all(1)
 	style.set_corner_radius_all(14)
 	var panel := _offset_panel(root,
 			[-450.0, -half_h - 40.0, 450.0, half_h + 40.0], style)

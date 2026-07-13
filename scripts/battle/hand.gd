@@ -16,6 +16,9 @@ const ARC_CENTER_X := 960.0
 
 @export var cards: Array[CardData] = []
 var _cards: Array[GameCard] = []
+## Ever-increasing stamp assigned to each card so it can return to its original
+## left-to-right position after a trip to a plan slot.
+var _order_seq: int = 0
 
 
 func _ready() -> void:
@@ -30,6 +33,8 @@ func add_card(data: CardData, from_pos: Vector2 = Vector2.INF) -> void:
 	card.data = data  # must be set before add_child so Card._ready() sees it
 	add_child(card)
 	_connect_drag(card)
+	card.set_meta("hand_order", _order_seq)
+	_order_seq += 1
 	_cards.append(card)
 	if from_pos != Vector2.INF:
 		card.position = from_pos         # start at deck; _layout will tween to arc
@@ -46,27 +51,47 @@ func remove_card(card: GameCard) -> void:
 
 
 ## Pull a card OUT of the hand without freeing it (it's moving into a slot).
+## Keep its hand_order stamp so return_card can restore its original position.
 func take_card(card: GameCard) -> void:
 	_cards.erase(card)
 	if card.get_parent() == self:
 		remove_child(card)
-	_layout()
+	_layout(true)
 
 
-## Put a card back into the hand (e.g. when its slot was cleared).
-func return_card(card: GameCard) -> void:
+## Put a card back into the hand (e.g. when its slot was cleared), restoring it
+## to its original left-to-right position rather than the far right.
+## from_global: the card's screen position in its slot, so the fly-back animates
+## from the slot rather than from wherever the reparent leaves it.
+func return_card(card: GameCard, from_global: Vector2 = Vector2.INF) -> void:
 	var parent := card.get_parent()
 	if parent != null and parent != self:
 		parent.remove_child(card)          # detach from its slot/wrapper first
 	if card.get_parent() != self:
 		add_child(card)
+	if from_global != Vector2.INF:
+		card.global_position = from_global   # animate the fly-back from the slot
 	card.pivot_offset = Vector2(CARD_W * 0.5, 0.0)
 	card.rotation     = 0.0
 	card.scale        = Vector2.ONE
 	if not _cards.has(card):
-		_cards.append(card)
+		if not card.has_meta("hand_order"):
+			card.set_meta("hand_order", _order_seq)
+			_order_seq += 1
+		_insert_by_order(card)
 		_connect_drag(card)
-	_layout()
+	_layout(true)
+
+
+## Insert a returning card so _cards stays ordered by each card's hand_order.
+func _insert_by_order(card: GameCard) -> void:
+	var order: int = card.get_meta("hand_order", _order_seq)
+	var idx := _cards.size()
+	for i in _cards.size():
+		if int(_cards[i].get_meta("hand_order", 0)) > order:
+			idx = i
+			break
+	_cards.insert(idx, card)
 
 
 func card_count() -> int:
@@ -105,6 +130,10 @@ func _layout(animate: bool = false) -> void:
 	var start_deg := -total_deg * 0.5
 
 	for i in n:
+		# Keep draw order matching hand order so left cards sit behind right
+		# cards — otherwise a card returned from a slot (added last) would cover
+		# the cards to its right.
+		move_child(_cards[i], i)
 		var deg   := start_deg + step_deg * float(i) if n > 1 else 0.0
 		var rad   := deg_to_rad(deg - 90.0)
 		var pos   := Vector2(ARC_CENTER_X, ARC_RADIUS) + Vector2(cos(rad), sin(rad)) * ARC_RADIUS
