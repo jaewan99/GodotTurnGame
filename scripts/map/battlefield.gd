@@ -25,6 +25,7 @@ const SHARE_OFFSET := 32.0   # px to nudge each token sideways when sharing a ce
 const CARD_SCENE := preload("res://scenes/cards/card.tscn")
 const CARD_SIZE := Vector2(200, 300)
 const MAP_SCENE := "res://scenes/map/map.tscn"
+const MENU_SCENE := "res://scenes/ui/main_menu.tscn"
 
 
 enum Phase { PLAN, RESOLVE }
@@ -982,18 +983,15 @@ func _game_over() -> void:
 	if _enemy.is_dead() and not _player.is_dead():
 		_show_win_reward()
 	else:
+		# Player died (or a draw) — flag it and send them to the main menu.
+		GameState.player_died = true
 		var banner := get_node_or_null("UI/Banner") as Label
 		if banner != null:
 			banner.text = "You lose!" if _player.is_dead() else "Draw!"
 			banner.visible = true
-		var ui := get_node_or_null("UI") as CanvasLayer
-		if ui != null:
-			var btn := Button.new()
-			btn.text = "Return to Map"
-			btn.position = Vector2(860.0, 596.0)
-			btn.size = Vector2(200.0, 44.0)
-			btn.pressed.connect(func(): get_tree().change_scene_to_file(MAP_SCENE))
-			ui.add_child(btn)
+		# Brief pause so the banner is visible, then return to the main menu.
+		get_tree().create_timer(1.5).timeout.connect(
+			func(): get_tree().change_scene_to_file(MENU_SCENE))
 
 
 # ── Card effects (shared by resolution) ───────────────────────────────────────

@@ -32,6 +32,8 @@ var bounty_rounds: int = 0
 var coin_mult: int = 1
 ## Set after winning a Dojo battle; map shows the free-upgrade overlay.
 var dojo_reward_pending: bool = false
+## Set true when the player dies; the main menu reads it to show a death notice.
+var player_died: bool = false
 
 
 func has_map() -> bool:
@@ -57,3 +59,4 @@ func reset() -> void:
 	bounty_rounds = 0
 	coin_mult = 1
 	dojo_reward_pending = false
+	player_died = false
