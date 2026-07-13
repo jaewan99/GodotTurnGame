@@ -4,7 +4,7 @@ extends Control
 const CARD_SCENE := preload("res://scenes/cards/card.tscn")
 
 @onready var _title: Label = $Panel/VBox/Header/TitleLabel
-@onready var _sections: VBoxContainer = $Panel/VBox/Scroll/Sections
+@onready var _sections: VBoxContainer = $Panel/VBox/Scroll/Margin/Sections
 @onready var _close: Button = $Panel/VBox/Header/CloseButton
 
 
