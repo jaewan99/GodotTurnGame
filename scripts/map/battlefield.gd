@@ -26,8 +26,11 @@ const CARD_SCENE := preload("res://scenes/cards/card.tscn")
 const CARD_SIZE := Vector2(200, 300)
 const MAP_SCENE := "res://scenes/map/map.tscn"
 const MENU_SCENE := "res://scenes/ui/main_menu.tscn"
-## z_index for cards flying into the discard pile — keeps them in front of the box.
-const _DISCARD_FLY_Z := 20
+## z_index for cards flying into the discard pile — keeps them in front of the
+## box (and above move cards, which use z_index 100).
+const _DISCARD_FLY_Z := 200
+## Final scale of a card once it has flown into the discard pile.
+const _DISCARD_FLY_SCALE := 0.1
 
 
 enum Phase { PLAN, RESOLVE }
@@ -868,9 +871,9 @@ func _resolve() -> void:
 		for card in _hand.detach_all_cards():
 			_deck.discard(card.data)
 			card.reparent(ui, true)
-			card.z_index = _DISCARD_FLY_Z    # fly in front of the discard box
-			card.tween_position(_discard_fly_target(card, discard_panel), 0.3, true)
-			card.tween_scale(Vector2(0.1, 0.1), 0.3)
+			var target := _prepare_discard_fly(card, discard_panel, _DISCARD_FLY_SCALE)
+			card.tween_position(target, 0.3, true)
+			card.tween_scale(Vector2(_DISCARD_FLY_SCALE, _DISCARD_FLY_SCALE), 0.3)
 			_discarding_hand_cards.append(card)
 		_update_pile_info()
 		# Free them right after the animation — don't let them pile up during the fight.
@@ -919,12 +922,20 @@ func _resolve() -> void:
 	_cleanup()
 
 
-## Global top-left target for a card flying into the discard pile, chosen so the
-## shrunk card (pivot = center) ends up centered on the right side of the box.
-func _discard_fly_target(card: GameCard, panel: Control) -> Vector2:
+## Prepare a card to fly into the discard pile: force its pivot to the center so
+## the shrink stays centered, raise it above the box, and return the global
+## top-left target that lands the shrunk card on the right side of the box.
+## Prepare a card to fly into the discard pile and return the global_position
+## target so the SHRUNK card ends centered on the right side of the box.
+## Because tween_position animates `global_position` (which for a scaled Control
+## sits at top-left + pivot·(1-scale)), the final visible center is
+## `target + (size/2)·final_scale` — so we subtract exactly that offset.
+func _prepare_discard_fly(card: GameCard, panel: Control, final_scale: float) -> Vector2:
+	card.pivot_offset = card.size / 2.0   # scaling shrinks toward the card's center
+	card.z_index = _DISCARD_FLY_Z         # draw in front of the discard box
 	var center_right := panel.global_position \
 		+ Vector2(panel.size.x * 0.62, panel.size.y * 0.5)
-	return center_right - card.card_size / 2.0
+	return center_right - (card.size / 2.0) * final_scale
 
 
 func _cleanup() -> void:
@@ -950,9 +961,9 @@ func _cleanup() -> void:
 			card.reparent(ui, true)   # out of the wrapper into global space, keep size
 			if is_instance_valid(holder):
 				holder.queue_free()
-			card.z_index = _DISCARD_FLY_Z    # fly in front of the discard box
-			card.tween_position(_discard_fly_target(card, discard_panel), 0.35, true)
-			card.tween_scale(Vector2(0.1, 0.1), 0.35)
+			var target := _prepare_discard_fly(card, discard_panel, _DISCARD_FLY_SCALE)
+			card.tween_position(target, 0.35, true)
+			card.tween_scale(Vector2(_DISCARD_FLY_SCALE, _DISCARD_FLY_SCALE), 0.35)
 			flying.append(card)
 		else:
 			if entry.consumable:
