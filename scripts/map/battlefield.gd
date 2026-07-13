@@ -26,6 +26,8 @@ const CARD_SCENE := preload("res://scenes/cards/card.tscn")
 const CARD_SIZE := Vector2(200, 300)
 const MAP_SCENE := "res://scenes/map/map.tscn"
 const MENU_SCENE := "res://scenes/ui/main_menu.tscn"
+## z_index for cards flying into the discard pile — keeps them in front of the box.
+const _DISCARD_FLY_Z := 20
 
 
 enum Phase { PLAN, RESOLVE }
@@ -863,11 +865,11 @@ func _resolve() -> void:
 	var ui := get_node_or_null("UI")
 	var discard_panel := get_node_or_null("UI/DiscardPile") as Control
 	if _hand != null and ui != null and discard_panel != null:
-		var discard_target := discard_panel.global_position
 		for card in _hand.detach_all_cards():
 			_deck.discard(card.data)
 			card.reparent(ui, true)
-			card.tween_position(discard_target, 0.3, true)
+			card.z_index = _DISCARD_FLY_Z    # fly in front of the discard box
+			card.tween_position(_discard_fly_target(card, discard_panel), 0.3, true)
 			card.tween_scale(Vector2(0.1, 0.1), 0.3)
 			_discarding_hand_cards.append(card)
 		_update_pile_info()
@@ -917,6 +919,14 @@ func _resolve() -> void:
 	_cleanup()
 
 
+## Global top-left target for a card flying into the discard pile, chosen so the
+## shrunk card (pivot = center) ends up centered on the right side of the box.
+func _discard_fly_target(card: GameCard, panel: Control) -> Vector2:
+	var center_right := panel.global_position \
+		+ Vector2(panel.size.x * 0.62, panel.size.y * 0.5)
+	return center_right - card.card_size / 2.0
+
+
 func _cleanup() -> void:
 	# PlanBar was hidden during resolve; reveal it so slot cards can animate.
 	var plan_bar := get_node_or_null("UI/PlanBar") as CanvasItem
@@ -925,9 +935,7 @@ func _cleanup() -> void:
 
 	var ui := get_node_or_null("UI")
 	var discard_panel := get_node_or_null("UI/DiscardPile") as Control
-	var discard_target := Vector2.INF
-	if discard_panel != null:
-		discard_target = discard_panel.global_position  # top-left of the pile panel
+	var have_discard := discard_panel != null
 
 	var flying: Array[GameCard] = []
 
@@ -937,12 +945,13 @@ func _cleanup() -> void:
 			continue
 		var card: GameCard = entry.card
 		var holder: Node = card.get_parent() if is_instance_valid(card) else null
-		if entry.consumable and is_instance_valid(card) and discard_target != Vector2.INF and ui != null:
+		if entry.consumable and is_instance_valid(card) and have_discard and ui != null:
 			_deck.discard(entry.data)
 			card.reparent(ui, true)   # out of the wrapper into global space, keep size
 			if is_instance_valid(holder):
 				holder.queue_free()
-			card.tween_position(discard_target, 0.35, true)
+			card.z_index = _DISCARD_FLY_Z    # fly in front of the discard box
+			card.tween_position(_discard_fly_target(card, discard_panel), 0.35, true)
 			card.tween_scale(Vector2(0.1, 0.1), 0.35)
 			flying.append(card)
 		else:
