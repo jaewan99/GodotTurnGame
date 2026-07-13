@@ -71,7 +71,7 @@ func _ready() -> void:
 
 func _on_new_run() -> void:
 	GameState.reset()
-	get_tree().change_scene_to_file(MAP_SCENE)
+	SceneTransition.change_scene(MAP_SCENE)
 
 
 func _on_quit() -> void:

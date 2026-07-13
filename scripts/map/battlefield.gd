@@ -1011,7 +1011,7 @@ func _game_over() -> void:
 			banner.visible = true
 		# Brief pause so the banner is visible, then return to the main menu.
 		get_tree().create_timer(1.5).timeout.connect(
-			func(): get_tree().change_scene_to_file(MENU_SCENE))
+			func(): SceneTransition.change_scene(MENU_SCENE))
 
 
 # ── Card effects (shared by resolution) ───────────────────────────────────────
@@ -1418,7 +1418,7 @@ func _show_win_reward() -> void:
 		GameState.coins += randi_range(15, 25)
 		GameState.dojo_reward_pending = true
 		GameState.battle_tier_override = -1
-		get_tree().change_scene_to_file(MAP_SCENE)
+		SceneTransition.change_scene(MAP_SCENE)
 		return
 
 	# Tier override also raises the reward tier (e.g. secret elite).
@@ -1542,7 +1542,7 @@ func _show_win_reward() -> void:
 		GameState.coins += coins_earned
 		overlay.queue_free()
 		_advance_floor_if_boss()
-		get_tree().change_scene_to_file(MAP_SCENE)
+		SceneTransition.change_scene(MAP_SCENE)
 	)
 	action_row.add_child(skip_all)
 
@@ -1710,7 +1710,7 @@ func _on_reward_chosen(cd: CardData, coins_earned: int, overlay: CanvasLayer) ->
 	GameState.deck.append(cd.duplicate())
 	overlay.queue_free()
 	_advance_floor_if_boss()
-	get_tree().change_scene_to_file(MAP_SCENE)
+	SceneTransition.change_scene(MAP_SCENE)
 
 
 func _on_equipment_chosen(ed: EquipmentData, coins_earned: int, overlay: CanvasLayer) -> void:
@@ -1719,7 +1719,7 @@ func _on_equipment_chosen(ed: EquipmentData, coins_earned: int, overlay: CanvasL
 	GameState.inventory.append(ed)
 	overlay.queue_free()
 	_advance_floor_if_boss()
-	get_tree().change_scene_to_file(MAP_SCENE)
+	SceneTransition.change_scene(MAP_SCENE)
 
 
 # ── Equipment application ─────────────────────────────────────────────────────

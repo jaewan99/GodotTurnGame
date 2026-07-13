@@ -313,13 +313,20 @@ func _close_current_node() -> void:
 func _on_node_clicked(node: MapNode) -> void:
 	node.visited = true
 	_current_node = node
-	_refresh()
-	queue_redraw()
+
+	# Battle nodes leave the map immediately — skip repainting so the player
+	# doesn't glimpse the newly-revealed nodes under the transition. They'll
+	# appear when the map is rebuilt on return from battle.
+	var leaving_for_battle := node.type in [
+		MapNode.Type.FIGHT, MapNode.Type.ELITE, MapNode.Type.BOSS]
+	if not leaving_for_battle:
+		_refresh()
+		queue_redraw()
 
 	match node.type:
 		MapNode.Type.FIGHT, MapNode.Type.ELITE, MapNode.Type.BOSS:
 			GameState.current_node_id = node.id
-			get_tree().change_scene_to_file(BATTLE_SCENE)
+			SceneTransition.change_scene(BATTLE_SCENE)
 		MapNode.Type.REST:
 			_show_wizard_overlay()
 		MapNode.Type.SHOP:
@@ -352,7 +359,7 @@ func _go_battle(node: MapNode, tier: int = -1, bounty: int = 0, mult: int = 1) -
 	GameState.battle_tier_override = tier
 	GameState.bounty_rounds = bounty
 	GameState.coin_mult = mult
-	get_tree().change_scene_to_file(BATTLE_SCENE)
+	SceneTransition.change_scene(BATTLE_SCENE)
 
 
 const CARD_VIEWER_SCENE := preload("res://scenes/ui/card_viewer.tscn")
