@@ -62,6 +62,14 @@ func _ready() -> void:
 	start_btn.pressed.connect(_on_new_run)
 	vbox.add_child(start_btn)
 
+	# Continue button — only when a saved run exists on disk.
+	if GameState.has_save_file():
+		var load_btn := Button.new()
+		load_btn.text = "Load Run"
+		load_btn.custom_minimum_size = Vector2(240, 52)
+		load_btn.pressed.connect(_on_load_run)
+		vbox.add_child(load_btn)
+
 	var quit_btn := Button.new()
 	quit_btn.text = "Quit"
 	quit_btn.custom_minimum_size = Vector2(240, 52)
@@ -72,6 +80,11 @@ func _ready() -> void:
 func _on_new_run() -> void:
 	GameState.reset()
 	SceneTransition.change_scene(MAP_SCENE)
+
+
+func _on_load_run() -> void:
+	if GameState.load_game():
+		SceneTransition.change_scene(MAP_SCENE)
 
 
 func _on_quit() -> void:

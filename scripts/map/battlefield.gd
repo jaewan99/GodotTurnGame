@@ -155,6 +155,10 @@ func _ready() -> void:
 		cards_btn.pressed.connect(_on_bag_pressed)
 		btns.add_child(cards_btn)
 
+		var save_btn := HudKit.button("Save", "", Color(0.60, 0.80, 0.55))
+		save_btn.pressed.connect(_on_save_pressed)
+		btns.add_child(save_btn)
+
 	_card_viewer = get_node_or_null("UI/CardViewer") as CardViewer
 
 	var discard_panel := get_node_or_null("UI/DiscardPile")
@@ -611,6 +615,15 @@ func _on_deck_panel_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
 		if _card_viewer != null:
 			_card_viewer.show_cards("Draw Pile", _deck.draw_pile)
+
+
+## Manual save from the battlefield. Battle progress itself isn't persisted —
+## the run is stored as of the current node, so loading resumes on the map.
+func _on_save_pressed() -> void:
+	if GameState.save_game():
+		_show_toast("Run saved — resumes on the map")
+	else:
+		_show_toast("Save failed")
 
 
 ## Pop a short message in the center for ~2.5s. Overlapping calls reset the timer.

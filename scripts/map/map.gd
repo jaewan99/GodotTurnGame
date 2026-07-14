@@ -114,6 +114,9 @@ func _ready() -> void:
 	GameState.bounty_rounds = 0
 	GameState.coin_mult = 1
 
+	# Autosave: stepping into the map is a safe checkpoint (no battle in progress).
+	GameState.save_game()
+
 
 # ── Pan input ─────────────────────────────────────────────────────────────────
 
@@ -403,6 +406,10 @@ func _add_hud() -> void:
 	_deck_btn.pressed.connect(_show_deck_viewer)
 	btns.add_child(_deck_btn)
 
+	var save_btn := _hud_button("Save", "", Color(0.60, 0.80, 0.55))
+	save_btn.pressed.connect(_on_save_pressed.bind(save_btn))
+	btns.add_child(save_btn)
+
 	# ── Bottom-left: control hints ────────────────────────────────────────────
 	var hints := VBoxContainer.new()
 	hints.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
@@ -528,6 +535,20 @@ static func _type_name(t: MapNode.Type) -> String:
 ## Player stat sheet — shared with the battlefield via HudKit.
 func _show_stats_overlay() -> void:
 	HudKit.show_stats(self)
+
+
+## Manual save. The map already autosaves on entry, so this is a convenience —
+## briefly flashes "Saved!" on the button as confirmation.
+func _on_save_pressed(btn: Button) -> void:
+	var ok := GameState.save_game()
+	if not is_instance_valid(btn):
+		return
+	btn.disabled = true
+	btn.text = "Saved!" if ok else "Failed"
+	await get_tree().create_timer(1.0).timeout
+	if is_instance_valid(btn):
+		btn.text = "Save"
+		btn.disabled = false
 
 
 ## Label like "Cards (9+5)": deck actions + the permanent move cards.
