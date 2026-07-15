@@ -62,6 +62,22 @@ enum Team { PLAYER, ENEMY }
 		frames = value
 		_refresh()
 
+@export_group("Character art")
+## Uniform scale applied to the character art. Art is authored at 2× its
+## on-screen size (≈300px tall) so it stays crisp when the 1920×1080 viewport
+## is upscaled, hence 0.5 here.
+@export var art_scale: float = 0.5:
+	set(value):
+		art_scale = value
+		_apply_facing()
+## Nudge, in texture pixels, applied on top of the feet-anchoring. Use the X to
+## centre the *character* on the cell when the artwork isn't centred in its own
+## texture (e.g. a raised blade padding one side).
+@export var art_offset: Vector2 = Vector2(35, 0):
+	set(value):
+		art_offset = value
+		_refresh()
+
 @export_group("Placeholder look")
 @export var box_size: float = 48.0:
 	set(value):
@@ -97,11 +113,13 @@ var facing: Vector2i = Vector2i(1, 0):
 		facing = value
 		if _anim != null:
 			_anim.flip_h = value.x < 0
+		_apply_facing()
 		queue_redraw()
 ## Horizontal nudge applied when sharing a cell. Set by Battlefield.
 var visual_offset: Vector2 = Vector2.ZERO
 
-@onready var _sprite: Sprite2D = $Sprite
+@onready var _art: Node2D = $Art
+@onready var _sprite: Sprite2D = $Art/Sprite
 @onready var _anim: AnimatedSprite2D = $Anim
 @onready var _name_label: Label = $NameLabel
 
@@ -195,8 +213,28 @@ func _refresh() -> void:
 		_play(&"idle")
 	_sprite.texture = sprite_texture
 	_sprite.visible = frames == null and sprite_texture != null
+	_layout_art()
+	_apply_facing()
 	_name_label.text = display_name
 	queue_redraw()
+
+
+## Feet-anchors the art: shifts the centred texture up by half its height so its
+## bottom edge rests on the token's origin (the cell centre) instead of
+## straddling it, then applies `art_offset` on top.
+func _layout_art() -> void:
+	if _sprite == null or sprite_texture == null:
+		return
+	_sprite.offset = Vector2(0.0, -sprite_texture.get_size().y * 0.5) + art_offset
+
+
+## Scales the art and mirrors it when facing left. Done on the `Art` wrapper
+## rather than per-sprite so any extra pieces added later (effects, weapons)
+## mirror along with the body.
+func _apply_facing() -> void:
+	if _art == null:
+		return
+	_art.scale = Vector2(-art_scale if facing.x < 0 else art_scale, art_scale)
 
 
 func _draw() -> void:
@@ -211,8 +249,8 @@ func _draw() -> void:
 		draw_rect(rect, col.darkened(0.5), false, 2.0)
 
 	# Small triangle showing which direction this token is facing.
-	# Redundant once animated art (which flips) is in place, so hide it then.
-	if facing.x != 0 and frames == null:
+	# Redundant once real art (which flips) is in place, so hide it then.
+	if facing.x != 0 and not has_art:
 		var fx := float(facing.x)
 		draw_colored_polygon(PackedVector2Array([
 			Vector2(fx * 13.0,  0.0),   # tip

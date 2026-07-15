@@ -5,7 +5,10 @@
 [node name="Token" type="Node2D"]
 script = ExtResource("1_token")
 
-[node name="Sprite" type="Sprite2D" parent="."]
+[node name="Art" type="Node2D" parent="."]
+texture_filter = 4
+
+[node name="Sprite" type="Sprite2D" parent="Art"]
 visible = false
 
 [node name="Anim" type="AnimatedSprite2D" parent="."]

@@ -13,6 +13,7 @@
 [ext_resource type="PackedScene" path="res://scenes/ui/pause_overlay.tscn" id="11_overlay"]
 [ext_resource type="PackedScene" uid="uid://b16rd5u0f3lct" path="res://scenes/battle/lock_in_button.tscn" id="13_lockin"]
 [ext_resource type="PackedScene" uid="uid://ci6v1bcmhr30l" path="res://scenes/battle/hide_button.tscn" id="14_hidebtn"]
+[ext_resource type="Texture2D" path="res://assets/art/characters/swordsman/swordman.png" id="15_swordsman"]
 
 [node name="Battlefield" type="Node2D" unique_id=521275716]
 script = ExtResource("2_field")
@@ -30,6 +31,7 @@ columns = 5
 [node name="PlayerToken" parent="Board" unique_id=90672654 instance=ExtResource("3_token")]
 position = Vector2(-280, 0)
 display_name = "player"
+sprite_texture = ExtResource("15_swordsman")
 
 [node name="EnemyToken" parent="Board" unique_id=1085069902 instance=ExtResource("3_token")]
 position = Vector2(280, 0)
