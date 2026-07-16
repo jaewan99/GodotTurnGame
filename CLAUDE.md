@@ -1,6 +1,6 @@
 # CardGame — Godot 4.6 Project
 
-Inuyasha-inspired turn-based card game. WeGo (simultaneous) combat on a 3×3 grid, Slay-the-Spire-style run progression on a radial map.
+Inuyasha-inspired turn-based card game. WeGo (simultaneous) combat on a grid (Board defaults to 3×3, but `battlefield.tscn` overrides it to **5×3**), Slay-the-Spire-style run progression on a radial map.
 
 ## Quick file map
 
@@ -29,8 +29,8 @@ scripts/
     map_node.gd     ← MapNode Resource (id, type, pos, connections, visited)
     map_node_ui.gd  ← circular Button per node (visited/reachable/locked states)
     battlefield.gd  ← battle controller + WeGo turn loop. Joins "battlefield" group for range highlight.
-    board.gd        ← 3×3 chess grid (@tool). highlight_cells() / clear_highlight() for card range preview.
-    token.gd        ← combatant (HP, energy, block, movement, facing). current_cell: Vector2i.
+    board.gd        ← grid (@tool, configurable columns/rows; 5×3 in battle). highlight_cells() / clear_highlight() for card range preview.
+    token.gd        ← combatant (HP, energy, block, movement, facing) + character-art layout. current_cell: Vector2i.
   battle/
     deck.gd         ← draw/discard pile (auto-reshuffle when draw empty)
     hand.gd         ← 5-card arc layout manager
