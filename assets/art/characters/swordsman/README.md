@@ -2,6 +2,9 @@
 
 The player character. **One whole image** — sword drawn in, not a separate
 piece. Assigned to `PlayerToken.sprite_texture` in `scenes/map/battlefield.tscn`.
+The enemy token still uses the placeholder box. Token-side layout (scale, flip,
+anchoring, `art_offset`) lives in `scripts/map/token.gd`; see the "Character art"
+note in the project `CLAUDE.md`.
 
 ## Folders
 

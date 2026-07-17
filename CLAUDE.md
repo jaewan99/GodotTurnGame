@@ -54,6 +54,12 @@ assets/cards/
 
 data/cards/
   cards.json        ← all card definitions (id, cost, type, damage, affected_cells, art path, etc.)
+
+assets/art/characters/
+  swordsman/
+    swordman.png    ← player token art (~295×300; PlayerToken.sprite_texture)
+    source/         ← full-res masters (.gdignore'd so Godot skips import)
+    README.md       ← art pipeline: authoring size, downscaling, anchoring, filtering
 ```
 
 ## Card visual system
@@ -120,6 +126,20 @@ Rings: START (1) → FIGHT×5 (r=190) → mixed×7 (r=380) → BOSS (r=540).
 
 **Important**: every CardData added to `GameState.deck` must be `.duplicate()`d so each instance is independent (forge levels are per-instance, not per-template).
 
+### Save / Load (GameState)
+The run persists to `user://savegame.json` across app launches.
+- `save_game()` / `load_game()` / `has_save_file()` / `delete_save()` on GameState.
+- Resources (cards, equipment, scrolls, map nodes) are stored by **id + runtime-mutable fields** (forge level/upgrades/damage, enchant stats, node visited flags…) and rebuilt from their JSON templates on load. One-shot battle modifiers are never persisted.
+- **Autosave**: `map.gd._ready()` calls `save_game()` on every map entry (a safe checkpoint — no battle in progress). The battlefield does **not** autosave; both map and battlefield expose a manual **Save** button in the top-right HUD row.
+- **Main menu**: shows a **Load Run** button only when `has_save_file()` is true → `load_game()` → map scene.
+
+### Character art (token.gd)
+`Token` shows `sprite_texture` under an `Art` wrapper node (scale + horizontal flip in one place, so any future extra pieces mirror with the body).
+- `art_scale` (default 0.5) — art is authored at ~2× on-screen size, then downscaled offline (Lanczos + unsharp); GPU minification past ~2× blurs badly.
+- `art_offset` — texture-pixel nudge; re-centres art whose *image* centre isn't the *character* centre (a raised weapon pads one side).
+- Feet-anchored via `_layout_art()`: the sprite's bottom edge rests on the cell centre.
+- See `assets/art/characters/swordsman/README.md` for the full art pipeline.
+
 ### Card reward (battlefield.gd `_show_win_reward`)
 - Coins: FIGHT 30–50, ELITE 75–100, BOSS 150–200 (`randi_range`)
 - Shows 3 shuffled cards from reward pool (cards with `"reward": true` in cards.json)
@@ -185,7 +205,6 @@ Card `_get_drag_data()` → slot `_drop_data()`. Payload: `{ "data": CardData, "
 
 ## What is NOT yet implemented
 - Rest / Shop node logic (toast placeholder)
-- Persistent save between app launches (GameState resets on quit)
 - Win screen "Return to map" button after lose/draw
 - Card upgrade display in HUD / card viewer (level is tracked but not shown on the card visual)
 - Block is not shown in the HUD (functional but invisible to player)
